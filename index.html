@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="日本語">
+<meta name="theme-color" content="#1a1d24">
+<title>日本語ツール — 日語溝通工具</title>
+<style>
+:root{
+  --bg:#f4f5f7; --card:#ffffff; --fg:#1b1e24; --fg2:#6b7280; --line:#e3e5ea;
+  --accent:#3b6ef5; --accent-fg:#ffffff; --bubble-me:#e2ebff; --bubble-them:#ffffff;
+  --danger:#d64545; --star:#e8a824; --tag:#eef1f6; --ok:#2f9e5f;
+  --tabbar-h:56px; --composer-h:0px;
+}
+[data-theme="dark"]{
+  --bg:#14161b; --card:#1e222b; --fg:#e8eaef; --fg2:#9aa1ad; --line:#2c313c;
+  --accent:#5b85f7; --accent-fg:#ffffff; --bubble-me:#26344f; --bubble-them:#1e222b;
+  --danger:#e06565; --star:#e8b23e; --tag:#2a2f3a; --ok:#3fba74;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14161b; --card:#1e222b; --fg:#e8eaef; --fg2:#9aa1ad; --line:#2c313c;
+    --accent:#5b85f7; --accent-fg:#ffffff; --bubble-me:#26344f; --bubble-them:#1e222b;
+    --danger:#e06565; --star:#e8b23e; --tag:#2a2f3a; --ok:#3fba74;
+  }
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0; height:100%;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Noto Sans TC",sans-serif;
+  font-size:16px; line-height:1.5;
+  height:100dvh; display:flex; flex-direction:column; overflow:hidden;
+}
+button{font-family:inherit; border:none; background:none; color:inherit; cursor:pointer; padding:0;}
+input,textarea,select{font-family:inherit; font-size:16px; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:10px;}
+h1{font-size:18px; margin:0;}
+#warnbar{background:#b3760f; color:#fff; padding:6px 12px; font-size:13px; text-align:center;}
+main{flex:1; overflow:hidden; position:relative;}
+.tab{display:none; height:100%; flex-direction:column; overflow:hidden;}
+.tab.active{display:flex;}
+.tabhead{display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--card); flex-wrap:wrap;}
+.tabhead .sp{flex:1;}
+.scroll{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:16px;}
+.pill{border:1px solid var(--line); background:var(--card); border-radius:999px; padding:6px 12px; font-size:14px; min-height:36px;}
+.pill.on{background:var(--accent); color:var(--accent-fg); border-color:var(--accent);}
+.iconbtn{min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:18px; border-radius:10px;}
+/* ---- 卡片 ---- */
+.msg{display:flex; margin-bottom:10px;}
+.msg.me{justify-content:flex-end;}
+.card{
+  background:var(--bubble-them); border:1px solid var(--line); border-radius:14px;
+  padding:10px 12px; max-width:92%; min-width:60%;
+}
+.msg.me .card{background:var(--bubble-me);}
+.src-line{font-size:13px; color:var(--fg2); margin-bottom:2px; word-break:break-word;}
+.ja-line{font-size:19px; line-height:1.55; font-weight:500; word-break:break-word; cursor:pointer; border-radius:6px;}
+.ja-line:active{background:rgba(128,128,128,.15);}
+.romaji-line{font-size:13px; color:var(--fg2); margin-top:2px; word-break:break-word;}
+.kana-line{font-size:13px; color:var(--fg2); opacity:.85; word-break:break-word;}
+.zh-line{font-size:17px; margin-top:4px; word-break:break-word;}
+.note-line{font-size:11px; color:var(--fg2); margin-top:4px;}
+.collapsible.collapsed .ja-line{display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;}
+.expand-btn{font-size:13px; color:var(--accent); margin-top:2px; min-height:32px;}
+.actions{display:flex; gap:4px; margin-top:8px; align-items:center; flex-wrap:wrap;}
+.copybtn{
+  background:var(--accent); color:var(--accent-fg); border-radius:10px;
+  padding:0 16px; min-height:44px; font-size:15px; font-weight:600; flex:1; max-width:160px;
+}
+.copybtn.copied{background:var(--ok);}
+.actions .iconbtn{color:var(--fg2);}
+.actions .iconbtn.star-on{color:var(--star);}
+.actions .iconbtn.playing{color:var(--accent);}
+.err-card{border-color:var(--danger);}
+.err-card .retrybtn{background:var(--danger); color:#fff; border-radius:10px; min-height:44px; padding:0 16px; font-weight:600;}
+/* ---- 輸入區 ---- */
+#composer{background:var(--card); border-top:1px solid var(--line); padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px)*0);}
+#composer .row1{display:flex; gap:6px; align-items:center; margin-bottom:6px;}
+#composer .row2{display:flex; gap:6px; align-items:flex-end;}
+#input{flex:1; resize:none; padding:10px 12px; max-height:120px; min-height:44px; line-height:1.4;}
+#sendbtn{background:var(--accent); color:var(--accent-fg); border-radius:10px; min-width:64px; min-height:44px; font-weight:600; font-size:15px;}
+#sendbtn:disabled{opacity:.5;}
+#micbtn.rec{color:var(--danger); animation:pulse 1s infinite;}
+@keyframes pulse{50%{opacity:.4;}}
+/* ---- Tab bar ---- */
+#tabbar{
+  display:flex; background:var(--card); border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+#tabbar button{
+  flex:1; min-height:var(--tabbar-h); font-size:12px; color:var(--fg2);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+}
+#tabbar button .ico{font-size:20px;}
+#tabbar button.on{color:var(--accent); font-weight:600;}
+/* ---- 句庫 ---- */
+.subtabs{display:flex; gap:8px; padding:10px 12px 0;}
+.pcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 12px; margin-bottom:10px;}
+.tagchip{display:inline-block; background:var(--tag); border-radius:999px; padding:2px 10px; font-size:12px; color:var(--fg2); margin-right:4px;}
+.tagfilter{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
+.tagfilter .pill{min-height:32px; padding:3px 12px;}
+.cat-head{font-size:15px; font-weight:600; padding:10px 4px 6px; color:var(--fg2); display:flex; align-items:center; min-height:44px; width:100%; text-align:left;}
+.cat-head .arrow{margin-left:auto; transition:transform .15s;}
+.cat-head.open .arrow{transform:rotate(90deg);}
+.meta-line{font-size:12px; color:var(--fg2); margin-top:4px;}
+.addrow{display:flex; gap:6px; margin-bottom:12px;}
+.addrow input{flex:1; padding:10px 12px; min-height:44px;}
+.addrow button{background:var(--accent); color:var(--accent-fg); border-radius:10px; min-width:64px; min-height:44px; font-weight:600;}
+/* ---- 歷史 ---- */
+.date-head{font-size:13px; color:var(--fg2); font-weight:600; margin:14px 4px 8px;}
+#hsearch{width:100%; padding:10px 12px; min-height:44px; margin-bottom:4px;}
+/* ---- 設定 ---- */
+.set-group{background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:14px; overflow:hidden;}
+.set-row{display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--line); min-height:52px; flex-wrap:wrap;}
+.set-row:last-child{border-bottom:none;}
+.set-row label{flex:1; font-size:15px;}
+.set-row .hint{flex-basis:100%; font-size:12px; color:var(--fg2);}
+.set-row select{padding:8px 10px; max-width:55%;}
+.set-row input[type=range]{width:130px;}
+.segbtns{display:flex; gap:6px;}
+.setbtn{background:var(--accent); color:var(--accent-fg); border-radius:10px; min-height:44px; padding:0 16px; font-weight:600;}
+.setbtn.gray{background:var(--tag); color:var(--fg);}
+.setbtn.red{background:var(--danger);}
+/* ---- 彈窗 / toast ---- */
+#modal-wrap{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:20px;}
+#modal-wrap.show{display:flex;}
+#modal{background:var(--card); border-radius:16px; padding:18px; width:100%; max-width:420px; max-height:80dvh; overflow-y:auto;}
+#modal h2{font-size:16px; margin:0 0 12px;}
+#modal textarea,#modal input{width:100%; padding:10px; margin-bottom:10px;}
+#modal .btns{display:flex; gap:8px; justify-content:flex-end; margin-top:6px;}
+#modal .btns button{min-height:44px; padding:0 18px; border-radius:10px; font-weight:600;}
+#modal .ok{background:var(--accent); color:var(--accent-fg);}
+#modal .danger{background:var(--danger); color:#fff;}
+#modal .cancel{background:var(--tag); color:var(--fg);}
+#toast{
+  position:fixed; bottom:calc(var(--tabbar-h) + 70px); left:50%; transform:translateX(-50%);
+  background:rgba(20,22,28,.92); color:#fff; padding:9px 18px; border-radius:999px;
+  font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:60; max-width:88%; text-align:center;
+}
+#toast.show{opacity:1;}
+.empty{color:var(--fg2); text-align:center; padding:40px 20px; font-size:14px;}
+.hidden{display:none !important;}
+</style>
+</head>
+<body>
+<div id="warnbar" class="hidden"></div>
+<main>
+  <!-- 對話 -->
+  <section id="tab-chat" class="tab active">
+    <div class="tabhead">
+      <h1>對話</h1>
+      <div class="sp"></div>
+      <button class="pill" id="registerbtn-chat">丁寧</button>
+      <button class="pill" id="clearchatbtn">清空對話</button>
+    </div>
+    <div class="scroll" id="chatList"></div>
+  </section>
+  <!-- 句庫 -->
+  <section id="tab-phrases" class="tab">
+    <div class="tabhead">
+      <h1>句庫</h1>
+      <div class="sp"></div>
+      <button class="pill" id="registerbtn-ph">丁寧</button>
+    </div>
+    <div class="subtabs">
+      <button class="pill on" id="sub-fav">我的最愛</button>
+      <button class="pill" id="sub-builtin">內建句庫</button>
+    </div>
+    <div class="scroll" id="phraseArea"></div>
+  </section>
+  <!-- 歷史 -->
+  <section id="tab-history" class="tab">
+    <div class="tabhead">
+      <h1>歷史紀錄</h1>
+      <div class="sp"></div>
+      <button class="pill" id="clearhistbtn">全部清除</button>
+    </div>
+    <div class="scroll">
+      <input id="hsearch" type="search" placeholder="搜尋中文 / 日文 / 拼音…">
+      <div id="histList"></div>
+    </div>
+  </section>
+  <!-- 設定 -->
+  <section id="tab-settings" class="tab">
+    <div class="tabhead"><h1>設定</h1></div>
+    <div class="scroll" id="settingsArea"></div>
+  </section>
+</main>
+
+<div id="composer">
+  <div class="row1">
+    <button class="pill" id="dirbtn">方向：自動</button>
+    <span id="dirhint" style="font-size:12px;color:var(--fg2);"></span>
+  </div>
+  <div class="row2">
+    <textarea id="input" rows="1" placeholder="輸入中文或貼上日文…"></textarea>
+    <button class="iconbtn" id="micbtn" title="語音輸入">🎤</button>
+    <button id="sendbtn">翻譯</button>
+  </div>
+</div>
+
+<nav id="tabbar">
+  <button data-tab="chat" class="on"><span class="ico">💬</span>對話</button>
+  <button data-tab="phrases"><span class="ico">📚</span>句庫</button>
+  <button data-tab="history"><span class="ico">🕘</span>歷史</button>
+  <button data-tab="settings"><span class="ico">⚙️</span>設定</button>
+</nav>
+
+<div id="modal-wrap"><div id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   日本語ツール — 個人日語溝通工具  v1.0.0
+   單檔、零依賴。規格見專案規劃書。
+   ============================================================ */
+const VERSION = '1.0.0';
+
+/* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
+const Store = (() => {
+  let mem = {};
+  let usable = true;
+  try {
+    localStorage.setItem('njp.__t', '1');
+    localStorage.removeItem('njp.__t');
+  } catch (e) { usable = false; }
+  return {
+    usable,
+    get(key, def) {
+      try {
+        const raw = usable ? localStorage.getItem(key) : mem[key];
+        return raw == null ? def : JSON.parse(raw);
+      } catch (e) { return def; }
+    },
+    set(key, val) {
+      const raw = JSON.stringify(val);
+      if (usable) {
+        try { localStorage.setItem(key, raw); return; }
+        catch (e) { usable = false; showWarn('儲存空間已滿或不可用，資料改存於記憶體（關閉頁面會遺失），請先匯出備份。'); }
+      }
+      mem[key] = raw;
+    }
+  };
+})();
+
+/* ---------------- 狀態 ---------------- */
+const DEFAULT_SETTINGS = { voiceURI: '', slowRate: 0.6, showKana: true, theme: 'system', defaultRegister: 'polite' };
+/* 資料清洗：localStorage 與匯入的 JSON 都是外部輸入，欄位一律強制型別 */
+const S_ = v => typeof v === 'string' ? v : '';
+function sanHist(h) {
+  return { id: S_(h.id), dir: h.dir === 'ja2zh' ? 'ja2zh' : 'zh2ja', src: S_(h.src),
+    ja: S_(h.ja), romaji: S_(h.romaji), kana: S_(h.kana), zh: S_(h.zh),
+    starred: !!h.starred, inChat: !!h.inChat, ts: Number(h.ts) || Date.now() };
+}
+function sanFav(f) {
+  return { id: S_(f.id), ja: S_(f.ja), romaji: S_(f.romaji), kana: S_(f.kana), zh: S_(f.zh),
+    jaCasual: S_(f.jaCasual), romajiCasual: S_(f.romajiCasual),
+    tags: Array.isArray(f.tags) ? f.tags.filter(t => typeof t === 'string') : [],
+    copyCount: Number(f.copyCount) || 0, lastUsed: Number(f.lastUsed) || 0, ts: Number(f.ts) || Date.now() };
+}
+function sanSettings(s) {
+  s.slowRate = Math.min(0.8, Math.max(0.4, Number(s.slowRate) || 0.6));
+  s.showKana = !!s.showKana;
+  if (!['system', 'light', 'dark'].includes(s.theme)) s.theme = 'system';
+  if (!['polite', 'casual'].includes(s.defaultRegister)) s.defaultRegister = 'polite';
+  s.voiceURI = S_(s.voiceURI);
+  return s;
+}
+let history = Store.get('njp.history', []).filter(h => h && h.id).map(sanHist);
+let favorites = Store.get('njp.favorites', []).filter(f => f && f.id).map(sanFav);
+let settings = sanSettings(Object.assign({}, DEFAULT_SETTINGS, Store.get('njp.settings', {})));
+let register = settings.defaultRegister;          // 'polite' | 'casual'
+let dirMode = 'auto';                             // 'auto' | 'zh2ja' | 'ja2zh'
+let phraseSub = 'fav';                            // 'fav' | 'builtin'
+let favTagFilter = '';
+let openCats = {};
+
+/* ---------------- 小工具 ---------------- */
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function debounce(fn, ms) {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+const saveHistory = debounce(() => Store.set('njp.history', history), 300);
+const saveFavorites = debounce(() => Store.set('njp.favorites', favorites), 300);
+const saveSettings = debounce(() => Store.set('njp.settings', settings), 300);
+function flushAll() {
+  Store.set('njp.history', history);
+  Store.set('njp.favorites', favorites);
+  Store.set('njp.settings', settings);
+}
+window.addEventListener('pagehide', flushAll);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+function showWarn(msg) {
+  const w = document.getElementById('warnbar');
+  w.textContent = msg; w.classList.remove('hidden');
+}
+if (!Store.usable) showWarn('此瀏覽器無法使用本機儲存（可能是無痕模式），資料只存於記憶體，關閉頁面會遺失。');
+
+function fmtDate(ts) {
+  const d = new Date(ts);
+  return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+}
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
+/* ---------------- 自訂確認框 / 編輯框 ---------------- */
+const modalWrap = document.getElementById('modal-wrap');
+const modal = document.getElementById('modal');
+let modalResolve = null;
+function closeModal(val) {
+  modalWrap.classList.remove('show');
+  if (modalResolve) { const r = modalResolve; modalResolve = null; r(val); }
+}
+modalWrap.addEventListener('click', e => { if (e.target === modalWrap) closeModal(null); });
+function confirmUI(msg, okLabel, danger) {
+  return new Promise(res => {
+    modalResolve = res;
+    modal.innerHTML = '<h2>' + esc(msg) + '</h2>' +
+      '<div class="btns"><button class="cancel" data-r="no">取消</button>' +
+      '<button class="' + (danger ? 'danger' : 'ok') + '" data-r="yes">' + esc(okLabel || '確定') + '</button></div>';
+    modal.querySelectorAll('button').forEach(b => b.onclick = () => closeModal(b.dataset.r === 'yes'));
+    modalWrap.classList.add('show');
+  });
+}
+async function doubleConfirm(msg1, msg2) {
+  if (!(await confirmUI(msg1, '繼續', true))) return false;
+  return await confirmUI(msg2, '確定執行', true);
+}
+/* 編輯框：fields = [{key,label,value,multiline}] → resolve 物件或 null */
+function editUI(title, fields) {
+  return new Promise(res => {
+    modalResolve = res;
+    let h = '<h2>' + esc(title) + '</h2>';
+    for (const f of fields) {
+      h += '<div style="font-size:13px;color:var(--fg2);margin-bottom:3px;">' + esc(f.label) + '</div>';
+      h += f.multiline
+        ? '<textarea data-k="' + f.key + '" rows="3">' + esc(f.value) + '</textarea>'
+        : '<input data-k="' + f.key + '" value="' + esc(f.value) + '">';
+    }
+    h += '<div class="btns"><button class="cancel">取消</button><button class="ok">儲存</button></div>';
+    modal.innerHTML = h;
+    modal.querySelector('.cancel').onclick = () => closeModal(null);
+    modal.querySelector('.ok').onclick = () => {
+      const out = {};
+      modal.querySelectorAll('[data-k]').forEach(el => out[el.dataset.k] = el.value);
+      closeModal(out);
+    };
+    modalWrap.classList.add('show');
+  });
+}
+
+/* ---------------- 羅馬拼音 → 平假名（近似轉換） ---------------- */
+const KANA_DIGRAPH = {
+  kya:'きゃ',kyu:'きゅ',kyo:'きょ',gya:'ぎゃ',gyu:'ぎゅ',gyo:'ぎょ',
+  sha:'しゃ',shu:'しゅ',sho:'しょ',she:'しぇ',
+  cha:'ちゃ',chu:'ちゅ',cho:'ちょ',che:'ちぇ',chi:'ち',shi:'し',tsu:'つ',
+  nya:'にゃ',nyu:'にゅ',nyo:'にょ',hya:'ひゃ',hyu:'ひゅ',hyo:'ひょ',
+  bya:'びゃ',byu:'びゅ',byo:'びょ',pya:'ぴゃ',pyu:'ぴゅ',pyo:'ぴょ',
+  mya:'みゃ',myu:'みゅ',myo:'みょ',rya:'りゃ',ryu:'りゅ',ryo:'りょ',
+  jya:'じゃ',jyu:'じゅ',jyo:'じょ'
+};
+const KANA_BASE = {
+  ka:'か',ki:'き',ku:'く',ke:'け',ko:'こ',ga:'が',gi:'ぎ',gu:'ぐ',ge:'げ',go:'ご',
+  sa:'さ',si:'し',su:'す',se:'せ',so:'そ',za:'ざ',zi:'じ',zu:'ず',ze:'ぜ',zo:'ぞ',
+  ta:'た',ti:'ち',tu:'つ',te:'て',to:'と',da:'だ',di:'ぢ',du:'づ',de:'で',do:'ど',
+  na:'な',ni:'に',nu:'ぬ',ne:'ね',no:'の',
+  ha:'は',hi:'ひ',fu:'ふ',hu:'ふ',he:'へ',ho:'ほ',
+  ba:'ば',bi:'び',bu:'ぶ',be:'べ',bo:'ぼ',pa:'ぱ',pi:'ぴ',pu:'ぷ',pe:'ぺ',po:'ぽ',
+  ma:'ま',mi:'み',mu:'む',me:'め',mo:'も',ya:'や',yu:'ゆ',yo:'よ',
+  ra:'ら',ri:'り',ru:'る',re:'れ',ro:'ろ',wa:'わ',wo:'を',
+  ja:'じゃ',ju:'じゅ',jo:'じょ',ji:'じ',je:'じぇ',
+  fa:'ふぁ',fi:'ふぃ',fe:'ふぇ',fo:'ふぉ',vu:'ゔ',
+  a:'あ',i:'い',u:'う',e:'え',o:'お'
+};
+function romajiToKana(romaji) {
+  if (!romaji) return '';
+  let s = romaji.toLowerCase()
+    .replace(/ā/g, 'aa').replace(/ī/g, 'ii').replace(/ū/g, 'uu')
+    .replace(/ē/g, 'ei').replace(/ō/g, 'ou')
+    .replace(/[’']/g, "'");
+  let out = '';
+  let i = 0;
+  const isVowel = c => 'aiueo'.includes(c);
+  const isCons = c => c >= 'a' && c <= 'z' && !isVowel(c);
+  while (i < s.length) {
+    const c = s[i];
+    if (!(c >= 'a' && c <= 'z')) {           // 非字母（空格、數字、標點）原樣保留
+      if (c !== "'") out += c;
+      i++; continue;
+    }
+    // 促音：重複子音（含 tch → っち）
+    if (c === 't' && s[i + 1] === 'c') { out += 'っ'; i++; continue; }
+    if (isCons(c) && c !== 'n' && s[i + 1] === c) { out += 'っ'; i++; continue; }
+    // ん：n 後面不是母音也不是 y，或 n'
+    if (c === 'n') {
+      const nx = s[i + 1];
+      if (nx === "'") { out += 'ん'; i += 2; continue; }
+      if (nx == null || (!isVowel(nx) && nx !== 'y')) { out += 'ん'; i++; continue; }
+    }
+    if (c === 'm' && 'bmp'.includes(s[i + 1] || '')) { out += 'ん'; i++; continue; }
+    const three = s.slice(i, i + 3), two = s.slice(i, i + 2);
+    if (KANA_DIGRAPH[three]) { out += KANA_DIGRAPH[three]; i += 3; continue; }
+    if (KANA_DIGRAPH[two])   { out += KANA_DIGRAPH[two];   i += 2; continue; }
+    if (KANA_BASE[two])      { out += KANA_BASE[two];      i += 2; continue; }
+    if (KANA_BASE[c])        { out += KANA_BASE[c];        i += 1; continue; }
+    out += c; i++;                            // 轉不出來原樣保留
+  }
+  return out;
+}
+
+/* ---------------- 丁寧 → 常體（規則式近似轉換） ---------------- */
+const CASUAL_RULES = [
+  ['ありがとうございました', 'ありがとう'], ['ありがとうございます', 'ありがとう'],
+  ['申し訳ございません', 'ごめん'], ['申し訳ありません', 'ごめん'],
+  ['よろしくお願いいたします', 'よろしく'], ['よろしくお願いします', 'よろしく'],
+  ['お願いいたします', 'お願い'], ['お願いします', 'お願い'],
+  ['承知いたしました', '了解'], ['かしこまりました', '了解'],
+  ['いたしました', 'した'], ['いたします', 'する'], ['致します', 'する'],
+  ['でございます', 'だ'], ['ございません', 'ない'], ['ございます', 'ある'],
+  ['ませんでした', 'なかった'], ['ませんか', 'ない？'], ['ません', 'ない'],
+  ['ましたら', 'たら'], ['ました', 'た'],
+  ['ましょうか', 'ようか'], ['ましょう', 'よう'],
+  ['でしょうか', 'かな'], ['でしょう', 'だろう'],
+  ['でしたら', 'だったら'], ['でした', 'だった'],
+  ['ですか', '？'], ['ですね', 'だね'], ['ですよ', 'だよ'], ['です', 'だ'],
+  ['しないでください', 'しないで'], ['ないでください', 'ないで'],
+  ['してください', 'して'], ['てください', 'て'], ['でください', 'で'], ['ください', 'ちょうだい'],
+  ['ていますか', 'てる？'], ['ています', 'ている'],
+  ['できます', 'できる'],
+  ['します', 'する'], ['きます', 'く'], ['ぎます', 'ぐ'], ['ちます', 'つ'],
+  ['にます', 'ぬ'], ['びます', 'ぶ'], ['みます', 'む'], ['ります', 'る'],
+  ['います', 'う'], ['ます', 'る']
+];
+function toCasual(ja) {
+  let s = ja.replace(/ご([一-鿿]{1,3})ください/g, '$1して');   // ご確認ください→確認して
+  for (const [a, b] of CASUAL_RULES) s = s.split(a).join(b);
+  return s.replace(/？{2,}/g, '？').replace(/？[。．]/g, '？');
+}
+
+/* ---------------- 翻譯（Google gtx 免費端點） ---------------- */
+async function gtxFetch(text, sl, tl) {
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' + sl +
+    '&tl=' + tl + '&dt=t&dt=rm&q=' + encodeURIComponent(text);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } finally { clearTimeout(timer); }
+}
+/* 回傳解析（防禦式）：
+   result[0] = 句段陣列；item[0] 為字串 → 譯文片段；
+   item[0] === null 的句段 → 拼音：index 2 = 譯文拼音、index 3 = 原文拼音（實測確認）。 */
+function parseGtx(data, romajiIdx) {
+  let text = '', romaji = '';
+  const segs = (data && Array.isArray(data[0])) ? data[0] : [];
+  for (const s of segs) {
+    if (!Array.isArray(s)) continue;
+    if (typeof s[0] === 'string') text += s[0];
+    else if (s[0] === null && typeof s[romajiIdx] === 'string') {
+      romaji += (romaji ? ' ' : '') + s[romajiIdx];
+    }
+  }
+  return { text: text, romaji: romaji };
+}
+/* translate(text, dir) → {ja, zh, romaji, kana}；失敗自動重試一次後 throw */
+async function translate(text, dir) {
+  if (text.length > 1000) text = text.slice(0, 1000);
+  const sl = dir === 'zh2ja' ? 'zh-TW' : 'ja';
+  const tl = dir === 'zh2ja' ? 'ja' : 'zh-TW';
+  const romajiIdx = dir === 'zh2ja' ? 2 : 3;   // 中→日要譯文(日)拼音；日→中要原文(日)拼音
+  let data;
+  try { data = await gtxFetch(text, sl, tl); }
+  catch (e1) {
+    try { data = await gtxFetch(text, sl, tl); }
+    catch (e2) { throw new Error('翻譯服務連不上，請檢查網路後重試'); }
+  }
+  const p = parseGtx(data, romajiIdx);
+  if (!p.text) throw new Error('翻譯服務回傳異常，請稍後重試');
+  return {
+    ja: dir === 'zh2ja' ? p.text : text,
+    zh: dir === 'zh2ja' ? text : p.text,
+    romaji: p.romaji,
+    kana: p.romaji ? romajiToKana(p.romaji) : ''
+  };
+}
+/* 只重取日文拼音（編輯日文後用）：ja→zh 再抓原文拼音 */
+async function fetchRomajiOfJa(ja) {
+  const data = await gtxFetch(ja, 'ja', 'zh-TW');
+  return parseGtx(data, 3).romaji;
+}
+
+/* ---------------- TTS ---------------- */
+let jaVoices = [];
+let speakingBtn = null;
+function loadVoices() {
+  try {
+    jaVoices = speechSynthesis.getVoices().filter(v => v.lang && v.lang.toLowerCase().indexOf('ja') === 0);
+  } catch (e) { jaVoices = []; }
+  renderVoiceSelect();
+}
+if ('speechSynthesis' in window) {
+  speechSynthesis.addEventListener('voiceschanged', loadVoices);
+  loadVoices();
+}
+function pickVoice() {
+  if (settings.voiceURI) {
+    const v = jaVoices.find(v => v.voiceURI === settings.voiceURI);
+    if (v) return v;
+  }
+  const male = jaVoices.find(v => /otoya|ichiro|keita|daichi|hattori|male/i.test(v.name + ' ' + v.voiceURI));
+  return male || jaVoices[0] || null;
+}
+function stopSpeak() {
+  try { speechSynthesis.cancel(); } catch (e) {}
+  if (speakingBtn) { speakingBtn.classList.remove('playing'); speakingBtn = null; }
+}
+function speak(text, slow, btn) {
+  if (!('speechSynthesis' in window)) { showToast('此裝置不支援語音朗讀'); return; }
+  if (speakingBtn === btn && speechSynthesis.speaking) { stopSpeak(); return; }
+  stopSpeak();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ja-JP';
+  const v = pickVoice();
+  if (v) u.voice = v;
+  u.rate = slow ? settings.slowRate : 1.0;
+  u.onend = u.onerror = () => { if (speakingBtn === btn) stopSpeak(); };
+  speakingBtn = btn;
+  if (btn) btn.classList.add('playing');
+  speechSynthesis.speak(u);
+}
+
+/* ---------------- 複製 ---------------- */
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      ta.setSelectionRange(0, ta.value.length);      // iOS 的 select() 常無效
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e2) { ok = false; }
+  }
+  if (ok) {
+    showToast('已複製日文 ✓');
+    if (btn && btn.classList.contains('copybtn')) {
+      const old = btn.textContent;
+      btn.textContent = '已複製 ✓'; btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = old; btn.classList.remove('copied'); }, 1200);
+    }
+  } else showToast('複製失敗，請長按文字手動複製');
+  return ok;
+}
+
+/* ---------------- 內建句庫（手寫，丁寧＋常體） ---------------- */
+/* 欄位：zh, ja(丁寧), r(丁寧romaji), jc(常體), rc(常體romaji) */
+const BUILTIN = [
+{ cat: '打招呼與寒暄', items: [
+  { zh:'初次見面，請多指教', ja:'はじめまして。どうぞよろしくお願いいたします。', r:'Hajimemashite. Dōzo yoroshiku onegai itashimasu.', jc:'はじめまして。よろしくね！', rc:'Hajimemashite. Yoroshiku ne!' },
+  { zh:'好久不見', ja:'ご無沙汰しております。', r:'Gobusata shite orimasu.', jc:'久しぶり！', rc:'Hisashiburi!' },
+  { zh:'最近好嗎？', ja:'お変わりありませんか？', r:'Okawari arimasen ka?', jc:'元気にしてる？', rc:'Genki ni shiteru?' },
+  { zh:'辛苦了', ja:'お疲れ様です。', r:'Otsukaresama desu.', jc:'お疲れ！', rc:'Otsukare!' },
+  { zh:'早安', ja:'おはようございます。', r:'Ohayō gozaimasu.', jc:'おはよう！', rc:'Ohayō!' },
+  { zh:'你好（白天）', ja:'こんにちは。', r:'Konnichiwa.', jc:'こんにちは！', rc:'Konnichiwa!' },
+  { zh:'晚安（睡前）', ja:'おやすみなさい。', r:'Oyasuminasai.', jc:'おやすみ！', rc:'Oyasumi!' },
+  { zh:'謝謝招待（飯後）', ja:'ごちそうさまでした。', r:'Gochisōsama deshita.', jc:'ごちそうさま！', rc:'Gochisōsama!' },
+  { zh:'我先告辭了', ja:'お先に失礼します。', r:'Osaki ni shitsurei shimasu.', jc:'お先に！', rc:'Osaki ni!' },
+  { zh:'請保重身體', ja:'どうぞお体にお気をつけください。', r:'Dōzo okarada ni oki o tsuke kudasai.', jc:'体に気をつけてね。', rc:'Karada ni ki o tsukete ne.' }
+]},
+{ cat: '商務往來', items: [
+  { zh:'感謝您的回覆', ja:'ご返信ありがとうございます。', r:'Gohenshin arigatō gozaimasu.', jc:'返事ありがとう！', rc:'Henji arigatō!' },
+  { zh:'已確認收到', ja:'確かに受け取りました。', r:'Tashika ni uketorimashita.', jc:'確かに受け取ったよ。', rc:'Tashika ni uketotta yo.' },
+  { zh:'請告知您方便的時間', ja:'ご都合のよい日時をお知らせいただけますか？', r:'Gotsugō no yoi nichiji o oshirase itadakemasu ka?', jc:'都合のいい時間、教えて？', rc:'Tsugō no ii jikan, oshiete?' },
+  { zh:'資料已寄出，請查收', ja:'資料をお送りしましたので、ご確認ください。', r:'Shiryō o o-okuri shimashita node, gokakunin kudasai.', jc:'資料送ったから、確認してね。', rc:'Shiryō okutta kara, kakunin shite ne.' },
+  { zh:'請過目', ja:'ご一読いただければ幸いです。', r:'Go-ichidoku itadakereba saiwai desu.', jc:'目を通しておいてね。', rc:'Me o tōshite oite ne.' },
+  { zh:'再麻煩您確認', ja:'お手数ですが、ご確認のほどよろしくお願いいたします。', r:'Otesū desu ga, gokakunin no hodo yoroshiku onegai itashimasu.', jc:'確認よろしくね。', rc:'Kakunin yoroshiku ne.' },
+  { zh:'期待與您合作', ja:'ご一緒にお仕事できることを楽しみにしております。', r:'Go-issho ni oshigoto dekiru koto o tanoshimi ni shite orimasu.', jc:'一緒に仕事できるの、楽しみにしてるよ。', rc:'Issho ni shigoto dekiru no, tanoshimi ni shiteru yo.' },
+  { zh:'稍後回覆您', ja:'後ほどご連絡いたします。', r:'Nochihodo gorenraku itashimasu.', jc:'あとで連絡するね。', rc:'Ato de renraku suru ne.' },
+  { zh:'我明白了（收到）', ja:'承知いたしました。', r:'Shōchi itashimashita.', jc:'了解！', rc:'Ryōkai!' },
+  { zh:'如有問題請隨時聯繫', ja:'ご不明な点がございましたら、お気軽にお問い合わせください。', r:'Gofumei na ten ga gozaimashitara, okigaru ni otoiawase kudasai.', jc:'何かあったら、気軽に聞いてね。', rc:'Nanika attara, kigaru ni kiite ne.' },
+  { zh:'麻煩您了', ja:'お手数をおかけしますが、よろしくお願いいたします。', r:'Otesū o okake shimasu ga, yoroshiku onegai itashimasu.', jc:'よろしくね！', rc:'Yoroshiku ne!' },
+  { zh:'內容確認後再回覆您', ja:'内容を確認の上、改めてご連絡いたします。', r:'Naiyō o kakunin no ue, aratamete gorenraku itashimasu.', jc:'内容確認してから、また連絡するね。', rc:'Naiyō kakunin shite kara, mata renraku suru ne.' }
+]},
+{ cat: '感謝與道歉', items: [
+  { zh:'非常感謝', ja:'誠にありがとうございます。', r:'Makoto ni arigatō gozaimasu.', jc:'本当にありがとう！', rc:'Hontō ni arigatō!' },
+  { zh:'不好意思回覆晚了', ja:'ご返信が遅くなり、申し訳ございません。', r:'Gohenshin ga osoku nari, mōshiwake gozaimasen.', jc:'返事遅れてごめん！', rc:'Henji okurete gomen!' },
+  { zh:'造成困擾很抱歉', ja:'ご迷惑をおかけして申し訳ございません。', r:'Gomeiwaku o okake shite mōshiwake gozaimasen.', jc:'迷惑かけてごめんね。', rc:'Meiwaku kakete gomen ne.' },
+  { zh:'托您的福，幫大忙了', ja:'おかげさまで助かりました。', r:'Okagesama de tasukarimashita.', jc:'おかげで助かったよ！', rc:'Okage de tasukatta yo!' },
+  { zh:'感謝您的細心體貼', ja:'お心遣いありがとうございます。', r:'Okokorozukai arigatō gozaimasu.', jc:'気を遣ってくれてありがとう。', rc:'Ki o tsukatte kurete arigatō.' },
+  { zh:'改天再正式答謝您', ja:'改めてお礼申し上げます。', r:'Aratamete orei mōshiagemasu.', jc:'今度ちゃんとお礼するね。', rc:'Kondo chanto orei suru ne.' },
+  { zh:'百忙之中打擾了', ja:'お忙しいところ恐れ入ります。', r:'Oisogashii tokoro osoreirimasu.', jc:'忙しいのにごめんね。', rc:'Isogashii noni gomen ne.' },
+  { zh:'以後會多加注意', ja:'以後、このようなことがないよう気をつけます。', r:'Igo, kono yō na koto ga nai yō ki o tsukemasu.', jc:'次から気をつけるね。', rc:'Tsugi kara ki o tsukeru ne.' }
+]},
+{ cat: '約時間約見面', items: [
+  { zh:'下週方便嗎？', ja:'来週のご都合はいかがでしょうか？', r:'Raishū no gotsugō wa ikaga deshō ka?', jc:'来週って空いてる？', rc:'Raishū tte aiteru?' },
+  { zh:'可以改時間嗎？', ja:'日程を変更させていただいてもよろしいでしょうか？', r:'Nittei o henkō sasete itadaite mo yoroshii deshō ka?', jc:'時間変えてもいい？', rc:'Jikan kaete mo ii?' },
+  { zh:'線上會議連結稍後傳送', ja:'オンライン会議のリンクは後ほどお送りします。', r:'Onrain kaigi no rinku wa nochihodo o-okuri shimasu.', jc:'会議のリンクはあとで送るね。', rc:'Kaigi no rinku wa ato de okuru ne.' },
+  { zh:'幾點方便呢？', ja:'何時ごろがご都合よろしいですか？', r:'Nanji goro ga gotsugō yoroshii desu ka?', jc:'何時がいい？', rc:'Nanji ga ii?' },
+  { zh:'那就約那個時間', ja:'では、その日時でお願いいたします。', r:'Dewa, sono nichiji de onegai itashimasu.', jc:'じゃあ、その時間で！', rc:'Jā, sono jikan de!' },
+  { zh:'抱歉，我大概會晚十分鐘', ja:'申し訳ございません、10分ほど遅れそうです。', r:'Mōshiwake gozaimasen, juppun hodo okuresō desu.', jc:'ごめん、10分くらい遅れそう！', rc:'Gomen, juppun kurai okuresō!' },
+  { zh:'到了跟您聯繫', ja:'着きましたらご連絡いたします。', r:'Tsukimashitara gorenraku itashimasu.', jc:'着いたら連絡するね。', rc:'Tsuitara renraku suru ne.' },
+  { zh:'期待與您見面', ja:'お会いできるのを楽しみにしております。', r:'Oai dekiru no o tanoshimi ni shite orimasu.', jc:'会えるの楽しみにしてるね！', rc:'Aeru no tanoshimi ni shiteru ne!' }
+]},
+{ cat: '餐廳與生活', items: [
+  { zh:'有什麼推薦的嗎？', ja:'おすすめは何ですか？', r:'Osusume wa nan desu ka?', jc:'おすすめは何？', rc:'Osusume wa nani?' },
+  { zh:'麻煩買單', ja:'お会計をお願いします。', r:'Okaikei o onegai shimasu.', jc:'お会計お願い！', rc:'Okaikei onegai!' },
+  { zh:'很好吃', ja:'とてもおいしいです。', r:'Totemo oishii desu.', jc:'めっちゃおいしい！', rc:'Metcha oishii!' },
+  { zh:'乾杯！', ja:'乾杯しましょう！', r:'Kanpai shimashō!', jc:'乾杯！', rc:'Kanpai!' },
+  { zh:'請給我這個', ja:'これをください。', r:'Kore o kudasai.', jc:'これちょうだい！', rc:'Kore chōdai!' },
+  { zh:'有中文菜單嗎？', ja:'中国語のメニューはありますか？', r:'Chūgokugo no menyū wa arimasu ka?', jc:'中国語のメニューある？', rc:'Chūgokugo no menyū aru?' },
+  { zh:'可以刷卡嗎？', ja:'カードで支払えますか？', r:'Kādo de shiharaemasu ka?', jc:'カード使える？', rc:'Kādo tsukaeru?' },
+  { zh:'廁所在哪裡？', ja:'お手洗いはどちらですか？', r:'Otearai wa dochira desu ka?', jc:'トイレどこ？', rc:'Toire doko?' }
+]},
+{ cat: '閒聊社交', items: [
+  { zh:'歡迎來台灣', ja:'ぜひ台湾にいらしてください。', r:'Zehi Taiwan ni irashite kudasai.', jc:'ぜひ台湾に来てね！', rc:'Zehi Taiwan ni kite ne!' },
+  { zh:'下次來台灣我招待', ja:'今度台湾にいらしたら、ぜひご馳走させてください。', r:'Kondo Taiwan ni irashitara, zehi gochisō sasete kudasai.', jc:'今度台湾に来たら、ご馳走するよ！', rc:'Kondo Taiwan ni kitara, gochisō suru yo!' },
+  { zh:'今天天氣真好', ja:'今日はいい天気ですね。', r:'Kyō wa ii tenki desu ne.', jc:'今日いい天気だね。', rc:'Kyō ii tenki da ne.' },
+  { zh:'請問您是日本哪裡人？', ja:'ご出身は日本のどちらですか？', r:'Goshusshin wa Nihon no dochira desu ka?', jc:'出身はどこ？', rc:'Shusshin wa doko?' },
+  { zh:'我正在學日語', ja:'日本語を勉強しています。', r:'Nihongo o benkyō shite imasu.', jc:'日本語勉強してるんだ。', rc:'Nihongo benkyō shiterun da.' },
+  { zh:'有機會一起吃個飯吧', ja:'機会があれば、ぜひお食事でもご一緒しましょう。', r:'Kikai ga areba, zehi oshokuji demo go-issho shimashō.', jc:'今度ご飯行こうよ！', rc:'Kondo gohan ikō yo!' },
+  { zh:'祝旅途愉快', ja:'よいご旅行を！', r:'Yoi goryokō o!', jc:'楽しんできてね！', rc:'Tanoshinde kite ne!' },
+  { zh:'今後也請多多關照', ja:'これからもどうぞよろしくお願いします。', r:'Korekara mo dōzo yoroshiku onegai shimasu.', jc:'これからもよろしくね！', rc:'Korekara mo yoroshiku ne!' }
+]}
+];
+
+/* ---------------- 共用卡片渲染 ---------------- */
+function isFav(id) { return favorites.some(f => f.id === id); }
+
+/* entry 卡片（對話與歷史共用）。ctx = 'chat' | 'hist' */
+function cardHTML(e, ctx) {
+  const casual = register === 'casual';
+  const dispJa = casual ? toCasual(e.ja) : e.ja;
+  const showRomaji = !casual || dispJa === e.ja;    // 常體轉換有改字時拼音對不上，才隱藏
+  const romajiLine = e.romaji
+    ? '<div class="romaji-line">' + esc(e.romaji) + '</div>'
+    : '<div class="romaji-line">（拼音取得失敗）</div>';
+  const kanaLine = (settings.showKana && e.kana) ? '<div class="kana-line">' + esc(e.kana) + '</div>' : '';
+  const long = dispJa.length > 90 ? ' collapsible collapsed' : '';
+  const expandBtn = dispJa.length > 90 ? '<button class="expand-btn" data-act="expand">展開全文 ▾</button>' : '';
+  const casualNote = (casual && dispJa !== e.ja) ? '<div class="note-line">常體為自動轉換，僅供參考</div>' : '';
+  const star = isFav(e.id) ? '★' : '☆';
+  const starCls = isFav(e.id) ? ' star-on' : '';
+  let body;
+  if (e.dir === 'zh2ja') {
+    body = '<div class="src-line">' + esc(e.zh) + '</div>' +
+      '<div class="ja-line" data-act="copy">' + esc(dispJa) + '</div>' + expandBtn +
+      (showRomaji ? romajiLine + kanaLine : '') + casualNote;
+  } else {
+    body = '<div class="ja-line" data-act="copy">' + esc(dispJa) + '</div>' + expandBtn +
+      (showRomaji ? romajiLine + kanaLine : '') +
+      '<div class="zh-line">' + esc(e.zh) + '</div>' + casualNote;
+  }
+  const copyLabel = e.dir === 'zh2ja' ? '複製' : '複製日文';
+  const actions =
+    '<div class="actions">' +
+    '<button class="copybtn" data-act="copy">' + copyLabel + '</button>' +
+    '<button class="iconbtn" data-act="play" title="發音">▶︎</button>' +
+    '<button class="iconbtn" data-act="slow" title="慢速發音">🐢</button>' +
+    '<button class="iconbtn' + starCls + '" data-act="star" title="加入最愛">' + star + '</button>' +
+    '<button class="iconbtn" data-act="edit" title="編輯">✎</button>' +
+    '<button class="iconbtn" data-act="del" title="刪除">🗑</button>' +
+    '</div>';
+  const side = e.dir === 'zh2ja' ? 'me' : 'them';
+  return '<div class="msg ' + side + '" data-id="' + esc(e.id) + '" data-ctx="' + ctx + '">' +
+    '<div class="card' + long + '">' + body + actions +
+    (ctx === 'hist' ? '<div class="meta-line">' + fmtDate(e.ts) + ' ' + fmtTime(e.ts) + '</div>' : '') +
+    '</div></div>';
+}
+function displayedJa(e) { return register === 'casual' ? toCasual(e.ja) : e.ja; }
+
+/* ---------------- 對話分頁 ---------------- */
+const chatList = document.getElementById('chatList');
+let errState = null;                                 // {text, msg} 翻譯失敗的重試卡
+function renderChat() {
+  const entries = history.filter(e => e.inChat);
+  let html = entries.length
+    ? entries.map(e => cardHTML(e, 'chat')).join('')
+    : (errState ? '' : '<div class="empty">輸入中文或貼上日文，開始對話翻譯。<br>翻譯結果會自動保存。</div>');
+  if (errState) {
+    html += '<div class="msg" id="errcard"><div class="card err-card">' +
+      '<div class="zh-line">' + esc(errState.msg) + '</div>' +
+      '<div class="src-line" style="margin-top:4px;">' + esc(errState.text) + '</div>' +
+      '<div class="actions"><button class="retrybtn" data-act="retry">重試</button></div></div></div>';
+  }
+  chatList.innerHTML = html;
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
+/* 共用：卡片動作（事件委派，對話＋歷史） */
+async function handleCardAction(wrapEl, act, btn) {
+  const id = wrapEl.dataset.id;
+  const e = history.find(x => x.id === id);
+  if (!e) return;
+  if (act === 'copy') { copyText(displayedJa(e), btn); return; }
+  if (act === 'play') { speak(displayedJa(e), false, btn); return; }
+  if (act === 'slow') { speak(displayedJa(e), true, btn); return; }
+  if (act === 'expand') {
+    const card = wrapEl.querySelector('.card');
+    card.classList.toggle('collapsed');
+    btn.textContent = card.classList.contains('collapsed') ? '展開全文 ▾' : '收合 ▴';
+    return;
+  }
+  if (act === 'star') {
+    if (isFav(e.id)) {
+      favorites = favorites.filter(f => f.id !== e.id);
+      e.starred = false; showToast('已從最愛移除');
+    } else {
+      favorites.push({ id: e.id, ja: e.ja, romaji: e.romaji, kana: e.kana, zh: e.zh,
+        jaCasual: '', romajiCasual: '', tags: [], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+      e.starred = true; showToast('已加入最愛 ★');
+    }
+    saveFavorites(); saveHistory(); renderAll();
+    return;
+  }
+  if (act === 'edit') {
+    const out = await editUI('編輯', [
+      { key: 'ja', label: '日文', value: e.ja, multiline: true },
+      { key: 'zh', label: '中文', value: e.zh, multiline: true }
+    ]);
+    if (!out) return;
+    const jaChanged = out.ja.trim() !== e.ja;
+    e.zh = out.zh.trim();
+    if (jaChanged) {
+      e.ja = out.ja.trim();
+      try {
+        e.romaji = await fetchRomajiOfJa(e.ja);
+        e.kana = e.romaji ? romajiToKana(e.romaji) : '';
+      } catch (err) { e.romaji = ''; e.kana = ''; showToast('拼音未更新（連線失敗）'); }
+    }
+    const fav = favorites.find(f => f.id === e.id);   // 已加星的同步更新最愛副本
+    if (fav) {
+      fav.ja = e.ja; fav.zh = e.zh; fav.romaji = e.romaji; fav.kana = e.kana;
+      saveFavorites();
+    }
+    saveHistory(); renderAll();
+    return;
+  }
+  if (act === 'del') {
+    if (!(await confirmUI('刪除這一則翻譯？', '刪除', true))) return;
+    history = history.filter(x => x.id !== id);
+    saveHistory(); renderAll();
+  }
+}
+chatList.addEventListener('click', ev => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  if (btn.dataset.act === 'retry') {
+    const t = errState ? errState.text : '';
+    errState = null; renderChat();
+    if (t) doTranslate(t);
+    return;
+  }
+  handleCardAction(btn.closest('.msg'), btn.dataset.act, btn);
+});
+
+/* 清空對話（先存歷史再清 — 資料本來就同一份，只把 inChat 關掉） */
+document.getElementById('clearchatbtn').addEventListener('click', async () => {
+  if (!history.some(e => e.inChat)) { showToast('對話已是空的'); return; }
+  if (!(await doubleConfirm('清空對話流？所有句子仍會保留在「歷史」分頁。', '再確認一次：確定清空對話？'))) return;
+  history.forEach(e => e.inChat = false);
+  saveHistory(); renderChat(); showToast('已清空（歷史仍保留）');
+});
+
+/* ---------------- 輸入與送出 ---------------- */
+const input = document.getElementById('input');
+const sendbtn = document.getElementById('sendbtn');
+const dirbtn = document.getElementById('dirbtn');
+const dirhint = document.getElementById('dirhint');
+const KANA_RE = /[぀-ヿ]/;
+
+function detectDir(text) { return KANA_RE.test(text) ? 'ja2zh' : 'zh2ja'; }
+function effectiveDir(text) { return dirMode === 'auto' ? detectDir(text || input.value) : dirMode; }
+function renderDirBtn() {
+  dirbtn.textContent = dirMode === 'auto' ? '方向：自動' : (dirMode === 'zh2ja' ? '方向：中→日' : '方向：日→中');
+  dirbtn.classList.toggle('on', dirMode !== 'auto');
+  dirhint.textContent = dirMode === 'auto' ? '含假名→翻中文；否則→翻日文' : '';
+}
+dirbtn.addEventListener('click', () => {
+  dirMode = dirMode === 'auto' ? 'zh2ja' : (dirMode === 'zh2ja' ? 'ja2zh' : 'auto');
+  renderDirBtn();
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+});
+
+async function doTranslate(text) {
+  text = text.trim();
+  if (!text) return;
+  if (text.length > 1000) showToast('超過 1000 字，僅翻譯前 1000 字');
+  const dir = effectiveDir(text);
+  sendbtn.disabled = true; sendbtn.textContent = '…';
+  try {
+    const r = await translate(text, dir);
+    const entry = {
+      id: uuid(), dir: dir, src: text,
+      ja: r.ja, romaji: r.romaji, kana: r.kana, zh: r.zh,
+      starred: false, inChat: true, ts: Date.now()
+    };
+    history.push(entry);
+    trimHistory();
+    saveHistory();
+    input.value = ''; input.style.height = 'auto';
+    errState = null;
+    renderChat(); renderHistory();
+  } catch (err) {
+    errState = { text: text, msg: err.message || '翻譯失敗' };   // 原文同時保留在輸入框，不弄丟
+    renderChat();
+  } finally {
+    sendbtn.disabled = false; sendbtn.textContent = '翻譯';
+  }
+}
+sendbtn.addEventListener('click', () => doTranslate(input.value));
+function trimHistory() {
+  if (history.length <= 1000) return;
+  // 超過 1000 筆剔除最舊且未加星的
+  let excess = history.length - 1000;
+  history = history.filter(e => {
+    if (excess > 0 && !e.starred && !isFav(e.id)) { excess--; return false; }
+    return true;
+  });
+}
+
+/* ---------------- 語音輸入 ---------------- */
+const micbtn = document.getElementById('micbtn');
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recActive = false;
+if (!SR) micbtn.classList.add('hidden');
+else {
+  micbtn.addEventListener('click', () => {
+    if (recActive) { try { rec.stop(); } catch (e) {} return; }
+    rec = new SR();
+    rec.lang = effectiveDir(input.value) === 'ja2zh' ? 'ja-JP' : 'zh-TW';
+    rec.interimResults = true;
+    rec.continuous = false;
+    const base = input.value;
+    rec.onresult = ev => {
+      let txt = '';
+      for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+      input.value = base + txt;
+      input.dispatchEvent(new Event('input'));
+    };
+    rec.onend = () => { recActive = false; micbtn.classList.remove('rec'); };
+    rec.onerror = () => { recActive = false; micbtn.classList.remove('rec'); showToast('語音辨識失敗或未授權麥克風'); };
+    try { rec.start(); recActive = true; micbtn.classList.add('rec'); showToast(rec.lang === 'ja-JP' ? '請說日語…' : '請說中文…'); }
+    catch (e) { showToast('無法啟動語音輸入'); }
+  });
+}
+
+/* ---------------- 語體切換 ---------------- */
+function renderRegisterBtns() {
+  const label = register === 'polite' ? '丁寧' : '常體';
+  document.getElementById('registerbtn-chat').textContent = label;
+  document.getElementById('registerbtn-ph').textContent = label;
+  document.getElementById('registerbtn-chat').classList.toggle('on', register === 'casual');
+  document.getElementById('registerbtn-ph').classList.toggle('on', register === 'casual');
+}
+function toggleRegister() {
+  register = register === 'polite' ? 'casual' : 'polite';
+  renderRegisterBtns(); renderAll();
+}
+document.getElementById('registerbtn-chat').addEventListener('click', toggleRegister);
+document.getElementById('registerbtn-ph').addEventListener('click', toggleRegister);
+
+/* ---------------- 句庫分頁 ---------------- */
+const phraseArea = document.getElementById('phraseArea');
+document.getElementById('sub-fav').addEventListener('click', () => { phraseSub = 'fav'; renderPhrases(); });
+document.getElementById('sub-builtin').addEventListener('click', () => { phraseSub = 'builtin'; renderPhrases(); });
+
+function favCardHTML(f) {
+  const casual = register === 'casual' && f.jaCasual;
+  const ja = casual ? f.jaCasual : f.ja;
+  const autoCasual = register === 'casual' && !f.jaCasual;
+  const dispJa = autoCasual ? toCasual(f.ja) : ja;
+  const converted = autoCasual && dispJa !== f.ja;   // 規則轉換有改字 → 拼音對不上，隱藏並標註
+  const romaji = casual ? f.romajiCasual : f.romaji;
+  const kana = romaji ? romajiToKana(romaji) : '';
+  const tags = (f.tags || []).map(t => '<span class="tagchip">' + esc(t) + '</span>').join('');
+  return '<div class="pcard" data-id="' + esc(f.id) + '">' +
+    '<div class="ja-line" data-act="copy">' + esc(dispJa) + '</div>' +
+    (converted ? '<div class="note-line">常體為自動轉換，僅供參考</div>'
+      : '<div class="romaji-line">' + (romaji ? esc(romaji) : '（拼音取得失敗）') + '</div>' +
+        (settings.showKana && kana ? '<div class="kana-line">' + esc(kana) + '</div>' : '')) +
+    '<div class="zh-line">' + esc(f.zh) + '</div>' +
+    (tags ? '<div style="margin-top:6px;">' + tags + '</div>' : '') +
+    '<div class="actions">' +
+    '<button class="copybtn" data-act="copy">複製</button>' +
+    '<button class="iconbtn" data-act="play">▶︎</button>' +
+    '<button class="iconbtn" data-act="slow">🐢</button>' +
+    '<button class="iconbtn" data-act="edit">✎</button>' +
+    '<button class="iconbtn" data-act="del">🗑</button>' +
+    '</div>' +
+    '<div class="meta-line">複製 ' + (Number(f.copyCount) || 0) + ' 次</div>' +
+    '</div>';
+}
+function builtinCardHTML(it, id) {
+  const casual = register === 'casual';
+  const ja = casual ? it.jc : it.ja;
+  const romaji = casual ? it.rc : it.r;
+  const kana = romajiToKana(romaji);
+  const star = isFav(id) ? '★' : '☆';
+  return '<div class="pcard" data-id="' + esc(id) + '">' +
+    '<div class="src-line">' + esc(it.zh) + '</div>' +
+    '<div class="ja-line" data-act="copy">' + esc(ja) + '</div>' +
+    '<div class="romaji-line">' + esc(romaji) + '</div>' +
+    (settings.showKana ? '<div class="kana-line">' + esc(kana) + '</div>' : '') +
+    '<div class="actions">' +
+    '<button class="copybtn" data-act="copy">複製</button>' +
+    '<button class="iconbtn" data-act="play">▶︎</button>' +
+    '<button class="iconbtn" data-act="slow">🐢</button>' +
+    '<button class="iconbtn' + (isFav(id) ? ' star-on' : '') + '" data-act="star">' + star + '</button>' +
+    '</div></div>';
+}
+function renderPhrases() {
+  document.getElementById('sub-fav').classList.toggle('on', phraseSub === 'fav');
+  document.getElementById('sub-builtin').classList.toggle('on', phraseSub === 'builtin');
+  if (phraseSub === 'fav') {
+    const allTags = [...new Set(favorites.flatMap(f => f.tags || []))];
+    const chips = allTags.length
+      ? '<div class="tagfilter"><button class="pill' + (favTagFilter === '' ? ' on' : '') + '" data-tag="">全部</button>' +
+        allTags.map(t => '<button class="pill' + (favTagFilter === t ? ' on' : '') + '" data-tag="' + esc(t) + '">' + esc(t) + '</button>').join('') + '</div>'
+      : '';
+    const list = favorites
+      .filter(f => !favTagFilter || (f.tags || []).includes(favTagFilter))
+      .sort((a, b) => (b.copyCount || 0) - (a.copyCount || 0) || (b.lastUsed || 0) - (a.lastUsed || 0));
+    phraseArea.innerHTML =
+      '<div class="addrow"><input id="favAddInput" placeholder="輸入中文或日文，翻譯後存入最愛"><button id="favAddBtn">新增</button></div>' +
+      chips +
+      (list.length ? list.map(favCardHTML).join('') : '<div class="empty">還沒有最愛句子。<br>在對話中按 ☆，或在上方直接新增。</div>');
+    document.getElementById('favAddBtn').onclick = addFavorite;
+    document.getElementById('favAddInput').addEventListener('keydown', e => { if (e.key === 'Enter') addFavorite(); });
+    phraseArea.querySelectorAll('.tagfilter .pill').forEach(b =>
+      b.onclick = () => { favTagFilter = b.dataset.tag; renderPhrases(); });
+  } else {
+    phraseArea.innerHTML = BUILTIN.map((c, ci) => {
+      const open = openCats[ci] !== false;   // 預設全開
+      return '<button class="cat-head' + (open ? ' open' : '') + '" data-cat="' + ci + '">' +
+        esc(c.cat) + '（' + c.items.length + '）<span class="arrow">▸</span></button>' +
+        '<div class="cat-body' + (open ? '' : ' hidden') + '">' +
+        c.items.map((it, ii) => builtinCardHTML(it, 'b-' + ci + '-' + ii)).join('') +
+        '</div>';
+    }).join('');
+    phraseArea.querySelectorAll('.cat-head').forEach(h =>
+      h.onclick = () => { const ci = h.dataset.cat; openCats[ci] = openCats[ci] === false; renderPhrases(); });
+  }
+}
+async function addFavorite() {
+  const el = document.getElementById('favAddInput');
+  const text = el.value.trim();
+  if (!text) return;
+  const dir = dirMode !== 'auto' ? dirMode : detectDir(text);   // 尊重對話頁的手動方向覆蓋
+  el.disabled = true;
+  try {
+    const r = await translate(text, dir);
+    favorites.push({ id: uuid(), ja: r.ja, romaji: r.romaji, kana: r.kana, zh: r.zh,
+      jaCasual: '', romajiCasual: '', tags: [], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+    saveFavorites(); el.value = ''; renderPhrases(); showToast('已加入最愛 ★');
+  } catch (err) { showToast(err.message || '翻譯失敗'); }
+  finally { el.disabled = false; }
+}
+function builtinItemById(id) {
+  const m = /^b-(\d+)-(\d+)$/.exec(id);
+  if (!m) return null;
+  return (BUILTIN[+m[1]] || { items: [] }).items[+m[2]] || null;
+}
+phraseArea.addEventListener('click', async ev => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  const cardEl = btn.closest('.pcard');
+  const id = cardEl.dataset.id;
+  const act = btn.dataset.act;
+  // 內建句庫卡片
+  const bi = builtinItemById(id);
+  if (bi) {
+    const casual = register === 'casual';
+    const ja = casual ? bi.jc : bi.ja;
+    if (act === 'copy') { copyText(ja, btn); return; }
+    if (act === 'play') { speak(ja, false, btn); return; }
+    if (act === 'slow') { speak(ja, true, btn); return; }
+    if (act === 'star') {
+      if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); showToast('已從最愛移除'); }
+      else {
+        favorites.push({ id: id, ja: bi.ja, romaji: bi.r, kana: romajiToKana(bi.r), zh: bi.zh,
+          jaCasual: bi.jc, romajiCasual: bi.rc, tags: ['內建'], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+        showToast('已加入最愛 ★');
+      }
+      saveFavorites(); renderPhrases();
+    }
+    return;
+  }
+  // 最愛卡片
+  const f = favorites.find(x => x.id === id);
+  if (!f) return;
+  const dispJa = (register === 'casual')
+    ? (f.jaCasual || toCasual(f.ja))
+    : f.ja;
+  if (act === 'copy') {
+    if (await copyText(dispJa, btn)) {
+      f.copyCount = (f.copyCount || 0) + 1; f.lastUsed = Date.now();
+      saveFavorites();
+      const meta = cardEl.querySelector('.meta-line');
+      if (meta) meta.textContent = '複製 ' + f.copyCount + ' 次';
+    }
+    return;
+  }
+  if (act === 'play') { speak(dispJa, false, btn); return; }
+  if (act === 'slow') { speak(dispJa, true, btn); return; }
+  if (act === 'edit') {
+    const out = await editUI('編輯最愛', [
+      { key: 'ja', label: '日文', value: f.ja, multiline: true },
+      { key: 'zh', label: '中文', value: f.zh, multiline: true },
+      { key: 'tags', label: '標籤（逗號分隔，如：客戶,餐廳）', value: (f.tags || []).join(',') }
+    ]);
+    if (!out) return;
+    const jaChanged = out.ja.trim() !== f.ja;
+    f.ja = out.ja.trim(); f.zh = out.zh.trim();
+    f.tags = out.tags.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+    if (jaChanged) {
+      f.jaCasual = ''; f.romajiCasual = '';
+      try { f.romaji = await fetchRomajiOfJa(f.ja); f.kana = f.romaji ? romajiToKana(f.romaji) : ''; }
+      catch (e) { f.romaji = ''; f.kana = ''; showToast('拼音未更新（連線失敗）'); }
+    }
+    saveFavorites(); renderPhrases();
+    return;
+  }
+  if (act === 'del') {
+    if (!(await confirmUI('從最愛刪除這一句？', '刪除', true))) return;
+    favorites = favorites.filter(x => x.id !== id);
+    const h = history.find(x => x.id === id);
+    if (h) h.starred = false;
+    saveFavorites(); saveHistory(); renderAll();
+  }
+});
+
+/* ---------------- 歷史分頁 ---------------- */
+const histList = document.getElementById('histList');
+const hsearch = document.getElementById('hsearch');
+hsearch.addEventListener('input', debounce(renderHistory, 150));
+function renderHistory() {
+  const q = hsearch.value.trim().toLowerCase();
+  let list = [...history].reverse();
+  if (q) list = list.filter(e =>
+    (e.zh || '').toLowerCase().includes(q) ||
+    (e.ja || '').toLowerCase().includes(q) ||
+    (e.romaji || '').toLowerCase().includes(q));
+  if (!list.length) { histList.innerHTML = '<div class="empty">' + (q ? '找不到符合的紀錄' : '還沒有翻譯紀錄') + '</div>'; return; }
+  let html = '', lastDate = '';
+  for (const e of list) {
+    const d = fmtDate(e.ts);
+    if (d !== lastDate) { html += '<div class="date-head">' + d + '</div>'; lastDate = d; }
+    html += cardHTML(e, 'hist');
+  }
+  histList.innerHTML = html;
+}
+histList.addEventListener('click', ev => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  handleCardAction(btn.closest('.msg'), btn.dataset.act, btn);
+});
+document.getElementById('clearhistbtn').addEventListener('click', async () => {
+  if (!history.length) { showToast('歷史已是空的'); return; }
+  if (!(await doubleConfirm('清除全部歷史紀錄？此動作無法復原（最愛清單不受影響）。', '再確認一次：確定全部清除？'))) return;
+  history = [];
+  saveHistory(); renderAll(); showToast('歷史已清除');
+});
+
+/* ---------------- 設定分頁 ---------------- */
+const settingsArea = document.getElementById('settingsArea');
+function renderSettings() {
+  const stats = '最愛 ' + favorites.length + ' 句 ・ 歷史 ' + history.length + ' 筆';
+  settingsArea.innerHTML =
+  '<div class="set-group">' +
+    '<div class="set-row"><label>日語語音</label><select id="voiceSel"></select></div>' +
+    '<div class="set-row"><label>試聽</label><button class="setbtn gray" id="voiceTest">▶︎ こんにちは、テストです</button>' +
+      '<div class="hint">iPhone 想要男聲（Otoya）：設定 → 輔助使用 → 旁白 → 語音 → 日文 → 下載 Otoya，下載後回此頁選取。</div></div>' +
+    '<div class="set-row"><label>慢速播放速度</label><input type="range" id="slowRate" min="0.4" max="0.8" step="0.05" value="' + settings.slowRate + '"><span id="slowRateVal">' + settings.slowRate + '</span></div>' +
+  '</div>' +
+  '<div class="set-group">' +
+    '<div class="set-row"><label>平假名行</label><div class="segbtns">' +
+      '<button class="pill' + (settings.showKana ? ' on' : '') + '" data-set="showKana" data-val="1">顯示</button>' +
+      '<button class="pill' + (!settings.showKana ? ' on' : '') + '" data-set="showKana" data-val="">隱藏</button></div>' +
+      '<div class="hint">平假名由羅馬拼音自動推算，為近似值。</div></div>' +
+    '<div class="set-row"><label>深色模式</label><div class="segbtns">' +
+      ['system', 'light', 'dark'].map(m =>
+        '<button class="pill' + (settings.theme === m ? ' on' : '') + '" data-set="theme" data-val="' + m + '">' +
+        ({system:'跟隨系統',light:'亮',dark:'暗'}[m]) + '</button>').join('') + '</div></div>' +
+    '<div class="set-row"><label>預設語體</label><div class="segbtns">' +
+      '<button class="pill' + (settings.defaultRegister === 'polite' ? ' on' : '') + '" data-set="defaultRegister" data-val="polite">丁寧</button>' +
+      '<button class="pill' + (settings.defaultRegister === 'casual' ? ' on' : '') + '" data-set="defaultRegister" data-val="casual">常體</button></div>' +
+      '<div class="hint">即時翻譯的常體為規則式自動轉換，僅供參考；內建句庫為手寫雙版本。</div></div>' +
+  '</div>' +
+  '<div class="set-group">' +
+    '<div class="set-row"><label>匯出備份</label><button class="setbtn" id="exportBtn">下載 JSON</button><button class="setbtn gray" id="exportCopyBtn">複製 JSON</button>' +
+      '<div class="hint">iOS 若無法下載檔案，改用「複製 JSON」貼到備忘錄保存。</div></div>' +
+    '<div class="set-row"><label>匯入備份</label><button class="setbtn gray" id="importBtn">選擇 JSON 檔</button>' +
+      '<input type="file" id="importFile" accept=".json,application/json" class="hidden"></div>' +
+  '</div>' +
+  '<div class="set-group">' +
+    '<div class="set-row"><label>資料統計</label><span style="color:var(--fg2);font-size:14px;">' + stats + '</span></div>' +
+    '<div class="set-row"><label>版本</label><span style="color:var(--fg2);font-size:14px;">v' + VERSION + '</span></div>' +
+  '</div>';
+  renderVoiceSelect();
+  document.getElementById('voiceTest').onclick = e => speak('こんにちは、テストです。', false, e.currentTarget);
+  const slider = document.getElementById('slowRate');
+  slider.oninput = () => {
+    settings.slowRate = parseFloat(slider.value);
+    document.getElementById('slowRateVal').textContent = settings.slowRate;
+    saveSettings();
+  };
+  settingsArea.querySelectorAll('[data-set]').forEach(b => b.onclick = () => {
+    const k = b.dataset.set, v = b.dataset.val;
+    if (k === 'showKana') settings.showKana = !!v;
+    else settings[k] = v;
+    if (k === 'theme') applyTheme();
+    if (k === 'defaultRegister') { register = v; renderRegisterBtns(); }
+    saveSettings(); renderAll();
+  });
+  document.getElementById('exportBtn').onclick = exportBackup;
+  document.getElementById('exportCopyBtn').onclick = exportCopy;
+  document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
+  document.getElementById('importFile').onchange = importBackup;
+}
+function renderVoiceSelect() {
+  const sel = document.getElementById('voiceSel');
+  if (!sel) return;
+  const current = pickVoice();
+  sel.innerHTML = jaVoices.length
+    ? jaVoices.map(v => '<option value="' + esc(v.voiceURI) + '"' +
+        (current && v.voiceURI === current.voiceURI ? ' selected' : '') + '>' + esc(v.name) + '</option>').join('')
+    : '<option value="">（尚未載入日語語音）</option>';
+  sel.onchange = () => { settings.voiceURI = sel.value; saveSettings(); };
+}
+
+/* ---------------- 匯出 / 匯入 ---------------- */
+function backupJSON() {
+  return JSON.stringify({ app: 'nihongo-tool', version: VERSION, exportedAt: new Date().toISOString(),
+    favorites: favorites, history: history, settings: settings });
+}
+function exportBackup() {
+  flushAll();
+  const d = new Date();
+  const name = 'nihongo-backup-' + d.getFullYear() + '-' +
+    ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + '.json';
+  const blob = new Blob([backupJSON()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  showToast('已產生備份檔 ' + name);
+}
+async function exportCopy() {
+  if (await copyText(backupJSON(), null)) showToast('備份 JSON 已複製，請貼到備忘錄保存');
+}
+function importBackup(ev) {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || data.app !== 'nihongo-tool') throw new Error('not a backup');
+      let nf = 0, nh = 0;
+      if (Array.isArray(data.favorites)) {
+        for (const f of data.favorites) {
+          if (f && typeof f.id === 'string' && f.id && !favorites.some(x => x.id === f.id)) { favorites.push(sanFav(f)); nf++; }
+        }
+      }
+      if (Array.isArray(data.history)) {
+        for (const h of data.history) {
+          if (h && typeof h.id === 'string' && h.id && !history.some(x => x.id === h.id)) { history.push(sanHist(h)); nh++; }
+        }
+        history.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        trimHistory();
+      }
+      if (data.settings && typeof data.settings === 'object') {
+        settings = sanSettings(Object.assign({}, settings, data.settings));
+        applyTheme();
+      }
+      flushAll(); renderAll();
+      showToast('匯入完成：最愛 +' + nf + '、歷史 +' + nh);
+    } catch (e) { showToast('匯入失敗：不是有效的備份 JSON'); }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------------- 主題 ---------------- */
+function applyTheme() {
+  const root = document.documentElement;
+  if (settings.theme === 'light') root.dataset.theme = 'light';
+  else if (settings.theme === 'dark') root.dataset.theme = 'dark';
+  else delete root.dataset.theme;
+}
+
+/* ---------------- 分頁切換 ---------------- */
+const composer = document.getElementById('composer');
+document.getElementById('tabbar').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-tab]');
+  if (!b) return;
+  document.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + b.dataset.tab).classList.add('active');
+  composer.classList.toggle('hidden', b.dataset.tab !== 'chat');
+  stopSpeak();
+  if (b.dataset.tab === 'chat') chatList.scrollTop = chatList.scrollHeight;
+});
+
+/* ---------------- PWA：icon（canvas 生成 PNG）＋ manifest ＋ Service Worker ---------------- */
+function makeIconPNG(size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  g.fillStyle = '#3b6ef5';
+  g.fillRect(0, 0, size, size);
+  g.fillStyle = '#ffffff';
+  g.font = 'bold ' + Math.round(size * 0.54) + 'px sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('日', size / 2, size * 0.54);
+  return c.toDataURL('image/png');
+}
+(function setupPWA() {
+  try {
+    const appleLink = document.createElement('link');
+    appleLink.rel = 'apple-touch-icon';
+    appleLink.href = makeIconPNG(180);
+    document.head.appendChild(appleLink);
+    const manifest = {
+      name: '日本語ツール', short_name: '日本語',
+      start_url: location.href.split('#')[0], scope: './',
+      display: 'standalone', background_color: '#14161b', theme_color: '#1a1d24',
+      icons: [
+        { src: makeIconPNG(192), sizes: '192x192', type: 'image/png' },
+        { src: makeIconPNG(512), sizes: '512x512', type: 'image/png' }
+      ]
+    };
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+    document.head.appendChild(link);
+  } catch (e) {}
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
+
+/* ---------------- iOS 鍵盤把版面頂上去：跟著 visualViewport 縮 body ---------------- */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  let raf = 0;
+  const fit = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      document.body.style.height = vv.height + 'px';
+      window.scrollTo(0, 0);
+    });
+  };
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+}
+
+/* ---------------- 初始化 ---------------- */
+function renderAll() {
+  renderChat(); renderPhrases(); renderHistory(); renderSettings();
+}
+applyTheme();
+renderDirBtn();
+renderRegisterBtns();
+renderAll();
+window.addEventListener('online', () => showToast('網路已恢復'));
+window.addEventListener('offline', () => showToast('目前離線：翻譯暫不可用，句庫與發音照常'));
+</script>
+</body>
+</html>

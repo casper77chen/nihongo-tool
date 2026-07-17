@@ -145,6 +145,27 @@ main{flex:1; overflow:hidden; position:relative;}
   font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:60; max-width:88%; text-align:center;
 }
 #toast.show{opacity:1;}
+/* ---- 文法面板 ---- */
+#gsheet-wrap{position:fixed;inset:0;z-index:45;}
+#gsheet-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.4);}
+#gsheet{position:absolute;left:0;right:0;bottom:0;max-height:80dvh;background:var(--bg);border-radius:20px 20px 0 0;display:flex;flex-direction:column;box-shadow:0 -6px 30px rgba(0,0,0,.18);}
+#gsheet-head{display:flex;align-items:center;padding:12px 16px 6px;}
+#gsheet-title{font-weight:700;color:var(--accent);font-size:17px;flex:1;}
+#gsheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 14px calc(20px + env(safe-area-inset-bottom,0px));}
+.gsrc{font-size:16px;font-weight:600;padding:4px 2px 10px;border-bottom:1px solid var(--line);margin-bottom:10px;word-break:break-word;}
+.gcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow);}
+.gname{font-weight:700;color:var(--accent);font-size:16px;margin-bottom:2px;}
+.gname.drill-ok{color:var(--ok);} .gname.drill-no{color:var(--danger);}
+.gconn{font-size:12px;color:var(--fg2);margin-bottom:4px;}
+.gzh{font-size:15px;margin:3px 0;}
+.gnuance{font-size:13px;color:var(--fg2);margin:3px 0 6px;}
+.gex{font-size:15px;margin:5px 0;word-break:break-word;}
+.gtag{display:inline-block;background:var(--tag);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--fg2);margin-right:6px;}
+.gempty{color:var(--fg2);font-size:14px;text-align:center;padding:14px 8px;}
+.gai-section{margin-top:6px;padding-top:10px;border-top:1px dashed var(--line);}
+.gpart{display:flex;gap:8px;margin:4px 0;font-size:14px;}
+.gpart-ja{font-weight:600;white-space:nowrap;}
+.gpart-note{color:var(--fg2);}
 .empty{color:var(--fg2); text-align:center; padding:40px 20px; font-size:14px;}
 .hidden{display:none !important;}
 </style>
@@ -172,6 +193,7 @@ main{flex:1; overflow:hidden; position:relative;}
     <div class="subtabs">
       <button class="pill on" id="sub-fav">我的最愛</button>
       <button class="pill" id="sub-builtin">內建句庫</button>
+      <button class="pill" id="sub-grammar">文法</button>
     </div>
     <div class="scroll" id="phraseArea"></div>
   </section>
@@ -213,6 +235,13 @@ main{flex:1; overflow:hidden; position:relative;}
   <button data-tab="settings">設定</button>
 </nav>
 
+<div id="gsheet-wrap" class="hidden">
+  <div id="gsheet-backdrop"></div>
+  <div id="gsheet">
+    <div id="gsheet-head"><span id="gsheet-title">文法解析</span><button class="iconbtn" id="gsheet-close">✕</button></div>
+    <div id="gsheet-body"></div>
+  </div>
+</div>
 <div id="modal-wrap"><div id="modal"></div></div>
 <div id="toast"></div>
 
@@ -222,7 +251,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.1.2';
+const VERSION = '1.2.0';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -252,7 +281,7 @@ const Store = (() => {
 })();
 
 /* ---------------- 狀態 ---------------- */
-const DEFAULT_SETTINGS = { voiceURI: '', slowRate: 0.6, showKana: true, theme: 'system', defaultRegister: 'polite' };
+const DEFAULT_SETTINGS = { voiceURI: '', slowRate: 0.6, showKana: true, theme: 'system', defaultRegister: 'polite', apiKey: '', aiModel: 'claude-haiku-4-5', aiUsage: null };
 /* 資料清洗：localStorage 與匯入的 JSON 都是外部輸入，欄位一律強制型別 */
 const S_ = v => typeof v === 'string' ? v : '';
 function sanHist(h) {
@@ -266,12 +295,22 @@ function sanFav(f) {
     tags: Array.isArray(f.tags) ? f.tags.filter(t => typeof t === 'string') : [],
     copyCount: Number(f.copyCount) || 0, lastUsed: Number(f.lastUsed) || 0, ts: Number(f.ts) || Date.now() };
 }
+function sanGrammarNote(n) {
+  return { id: S_(n.id), patternKey: S_(n.patternKey), name: S_(n.name), explain: S_(n.explain),
+    srcJa: S_(n.srcJa), seenCount: Number(n.seenCount) || 0, ts: Number(n.ts) || Date.now(),
+    drills: (Array.isArray(n.drills) ? n.drills : []).map(d => ({
+      q: S_(d.q), answer: S_(d.answer), ok: typeof d.ok === 'boolean' ? d.ok : null,
+      corrected: S_(d.corrected), ts: Number(d.ts) || 0 })) };
+}
 function sanSettings(s) {
   s.slowRate = Math.min(0.8, Math.max(0.4, Number(s.slowRate) || 0.6));
   s.showKana = !!s.showKana;
   if (!['system', 'light', 'dark'].includes(s.theme)) s.theme = 'system';
   if (!['polite', 'casual'].includes(s.defaultRegister)) s.defaultRegister = 'polite';
   s.voiceURI = S_(s.voiceURI);
+  s.apiKey = S_(s.apiKey);
+  if (!['claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-8'].includes(s.aiModel)) s.aiModel = 'claude-haiku-4-5';
+  if (!s.aiUsage || typeof s.aiUsage !== 'object') s.aiUsage = null;
   return s;
 }
 let history = Store.get('njp.history', []).filter(h => h && h.id).map(sanHist);
@@ -301,6 +340,7 @@ function flushAll() {
   Store.set('njp.history', history);
   Store.set('njp.favorites', favorites);
   Store.set('njp.settings', settings);
+  if (window.__flushGrammar) window.__flushGrammar();
 }
 window.addEventListener('pagehide', flushAll);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
@@ -683,6 +723,7 @@ function cardHTML(e, ctx) {
     '<button class="copybtn" data-act="copy">' + copyLabel + '</button>' +
     '<button class="iconbtn" data-act="play" title="發音">▶︎</button>' +
     '<button class="iconbtn" data-act="slow" title="慢速發音">🐢</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">文</button>' +
     '<button class="iconbtn' + starCls + '" data-act="star" title="加入最愛">' + star + '</button>' +
     '<button class="iconbtn" data-act="edit" title="編輯">✎</button>' +
     '<button class="iconbtn" data-act="del" title="刪除">🗑</button>' +
@@ -719,6 +760,7 @@ async function handleCardAction(wrapEl, act, btn) {
   const e = history.find(x => x.id === id);
   if (!e) return;
   if (act === 'copy') { copyText(displayedJa(e), btn); return; }
+  if (act === 'grammar') { openGrammarSheet(e.ja); return; }
   if (act === 'play') { speak(displayedJa(e), false, btn); return; }
   if (act === 'slow') { speak(displayedJa(e), true, btn); return; }
   if (act === 'expand') {
@@ -902,6 +944,7 @@ document.getElementById('registerbtn-ph').addEventListener('click', toggleRegist
 const phraseArea = document.getElementById('phraseArea');
 document.getElementById('sub-fav').addEventListener('click', () => { phraseSub = 'fav'; renderPhrases(); });
 document.getElementById('sub-builtin').addEventListener('click', () => { phraseSub = 'builtin'; renderPhrases(); });
+document.getElementById('sub-grammar').addEventListener('click', () => { phraseSub = 'grammar'; renderPhrases(); });
 
 function favCardHTML(f) {
   const casual = register === 'casual' && f.jaCasual;
@@ -923,6 +966,7 @@ function favCardHTML(f) {
     '<button class="copybtn" data-act="copy">複製</button>' +
     '<button class="iconbtn" data-act="play">▶︎</button>' +
     '<button class="iconbtn" data-act="slow">🐢</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">文</button>' +
     '<button class="iconbtn" data-act="edit">✎</button>' +
     '<button class="iconbtn" data-act="del">🗑</button>' +
     '</div>' +
@@ -944,12 +988,18 @@ function builtinCardHTML(it, id) {
     '<button class="copybtn" data-act="copy">複製</button>' +
     '<button class="iconbtn" data-act="play">▶︎</button>' +
     '<button class="iconbtn" data-act="slow">🐢</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">文</button>' +
     '<button class="iconbtn' + (isFav(id) ? ' star-on' : '') + '" data-act="star">' + star + '</button>' +
     '</div></div>';
 }
 function renderPhrases() {
   document.getElementById('sub-fav').classList.toggle('on', phraseSub === 'fav');
   document.getElementById('sub-builtin').classList.toggle('on', phraseSub === 'builtin');
+  document.getElementById('sub-grammar').classList.toggle('on', phraseSub === 'grammar');
+  if (phraseSub === 'grammar') {
+    phraseArea.innerHTML = grammarListHTML();
+    return;
+  }
   if (phraseSub === 'fav') {
     const allTags = [...new Set(favorites.flatMap(f => f.tags || []))];
     const chips = allTags.length
@@ -1000,6 +1050,8 @@ function builtinItemById(id) {
   return (BUILTIN[+m[1]] || { items: [] }).items[+m[2]] || null;
 }
 phraseArea.addEventListener('click', async ev => {
+  const gbtn = ev.target.closest('[data-gact]');
+  if (gbtn) { handleGrammarNoteAction(gbtn.closest('[data-gnote]').dataset.gnote, gbtn.dataset.gact); return; }
   const btn = ev.target.closest('[data-act]');
   if (!btn) return;
   const cardEl = btn.closest('.pcard');
@@ -1011,6 +1063,7 @@ phraseArea.addEventListener('click', async ev => {
     const casual = register === 'casual';
     const ja = casual ? bi.jc : bi.ja;
     if (act === 'copy') { copyText(ja, btn); return; }
+    if (act === 'grammar') { openGrammarSheet(bi.ja); return; }
     if (act === 'play') { speak(ja, false, btn); return; }
     if (act === 'slow') { speak(ja, true, btn); return; }
     if (act === 'star') {
@@ -1039,6 +1092,7 @@ phraseArea.addEventListener('click', async ev => {
     }
     return;
   }
+  if (act === 'grammar') { openGrammarSheet(f.ja); return; }
   if (act === 'play') { speak(dispJa, false, btn); return; }
   if (act === 'slow') { speak(dispJa, true, btn); return; }
   if (act === 'edit') {
@@ -1126,6 +1180,18 @@ function renderSettings() {
       '<div class="hint">即時翻譯的常體為規則式自動轉換，僅供參考；內建句庫為手寫雙版本。</div></div>' +
   '</div>' +
   '<div class="set-group">' +
+    '<div class="set-row"><label>Claude API Key</label>' +
+      '<input type="password" id="apiKeyIn" placeholder="sk-ant-…" style="flex:1;min-width:130px;padding:8px 10px;">' +
+      '<button class="setbtn" id="apiKeySave">儲存</button>' +
+      '<div class="hint">解鎖 AI 文法解析與造句批改。Key 只存在這台裝置的瀏覽器裡，不上傳任何伺服器；匯出備份也不含 key。目前：' + (settings.apiKey ? '已設定 ✓' : '未設定') + '</div></div>' +
+    '<div class="set-row"><label>連線</label><button class="setbtn gray" id="apiKeyTest">測試連線</button><button class="setbtn red" id="apiKeyClear">清除 key</button></div>' +
+    '<div class="set-row"><label>AI 模型</label><select id="aiModelSel">' +
+      Object.keys(AI_MODELS).map(k => '<option value="' + k + '"' + ((settings.aiModel || 'claude-haiku-4-5') === k ? ' selected' : '') + '>' + esc(AI_MODELS[k].label) + '</option>').join('') +
+      '</select></div>' +
+    '<div class="set-row"><label>本月 AI 用量</label><span style="color:var(--fg2);font-size:14px;">' +
+      ((settings.aiUsage && settings.aiUsage.calls) || 0) + ' 次 ・ 約 NT$' + usageCostTWD().toFixed(1) + '</span></div>' +
+  '</div>' +
+  '<div class="set-group">' +
     '<div class="set-row"><label>匯出備份</label><button class="setbtn" id="exportBtn">下載 JSON</button><button class="setbtn gray" id="exportCopyBtn">複製 JSON</button>' +
       '<div class="hint">iOS 若無法下載檔案，改用「複製 JSON」貼到備忘錄保存。</div></div>' +
     '<div class="set-row"><label>匯入備份</label><button class="setbtn gray" id="importBtn">選擇 JSON 檔</button>' +
@@ -1151,6 +1217,23 @@ function renderSettings() {
     if (k === 'defaultRegister') { register = v; renderRegisterBtns(); }
     saveSettings(); renderAll();
   });
+  document.getElementById('apiKeySave').onclick = () => {
+    const v = document.getElementById('apiKeyIn').value.trim();
+    if (!v) { showToast('先貼上 key 再按儲存'); return; }
+    settings.apiKey = v; saveSettings(); renderSettings();
+    showToast('已儲存，建議按「測試連線」確認');
+  };
+  document.getElementById('apiKeyClear').onclick = async () => {
+    if (!(await confirmUI('清除這台裝置上的 API key？', '清除', true))) return;
+    settings.apiKey = ''; saveSettings(); renderSettings(); showToast('已清除');
+  };
+  document.getElementById('apiKeyTest').onclick = async ev => {
+    const b = ev.currentTarget; b.disabled = true; b.textContent = '測試中…';
+    try { await claudeCall('你是連線測試。', '請只回覆：OK'); showToast('連線成功 ✓ AI 功能已就緒'); }
+    catch (err) { showToast('連線失敗：' + err.message); }
+    b.disabled = false; b.textContent = '測試連線';
+  };
+  document.getElementById('aiModelSel').onchange = ev => { settings.aiModel = ev.target.value; saveSettings(); };
   document.getElementById('exportBtn').onclick = exportBackup;
   document.getElementById('exportCopyBtn').onclick = exportCopy;
   document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
@@ -1170,7 +1253,8 @@ function renderVoiceSelect() {
 /* ---------------- 匯出 / 匯入 ---------------- */
 function backupJSON() {
   return JSON.stringify({ app: 'nihongo-tool', version: VERSION, exportedAt: new Date().toISOString(),
-    favorites: favorites, history: history, settings: settings });
+    favorites: favorites, history: history, grammar: grammarNotes,
+    settings: Object.assign({}, settings, { apiKey: '' }) });   // key 絕不進備份檔
 }
 function exportBackup() {
   flushAll();
@@ -1210,12 +1294,21 @@ function importBackup(ev) {
         history.sort((a, b) => (a.ts || 0) - (b.ts || 0));
         trimHistory();
       }
+      let ng = 0;
+      if (Array.isArray(data.grammar)) {
+        for (const gn of data.grammar) {
+          if (gn && typeof gn.id === 'string' && gn.id && !grammarNotes.some(x => x.id === gn.id)) { grammarNotes.push(sanGrammarNote(gn)); ng++; }
+        }
+        saveGrammar();
+      }
       if (data.settings && typeof data.settings === 'object') {
+        const localKey = settings.apiKey;                       // 匯入不覆蓋本機 key
         settings = sanSettings(Object.assign({}, settings, data.settings));
+        settings.apiKey = localKey;
         applyTheme();
       }
       flushAll(); renderAll();
-      showToast('匯入完成：最愛 +' + nf + '、歷史 +' + nh);
+      showToast('匯入完成：最愛 +' + nf + '、歷史 +' + nh + '、文法 +' + ng);
     } catch (e) { showToast('匯入失敗：不是有效的備份 JSON'); }
   };
   reader.readAsText(file);
@@ -1241,6 +1334,535 @@ document.getElementById('tabbar').addEventListener('click', ev => {
   stopSpeak();
   if (b.dataset.tab === 'chat') chatList.scrollTop = chatList.scrollHeight;
 });
+
+/* ================================================================
+   文法學習模組（v1.2）：手寫句型庫＋卡片匹配＋照樣造句＋AI 解析/批改
+   規格：文法學習功能規劃書.md
+   ================================================================ */
+/* 句型庫欄位：key、name 句型名、connect 接續、zh 說明、nuance 語感、
+   pj/pr 丁寧例句+romaji、cj/cr 常體例句+romaji、det 偵測 regex、
+   drills 造句題 [{q 中文情境, a 參考解答, r romaji}] */
+const GRAMMAR = [
+{ key:'ja-arimasen', name:'〜じゃありません', connect:'名詞・な形容詞＋じゃありません', zh:'否定：「不是〜／不〜」', nuance:'「ではありません」更正式（書面）；口語也常說「じゃないです」',
+  pj:'私は医者じゃありません。', pr:'Watashi wa isha ja arimasen.', cj:'医者じゃない。', cr:'Isha ja nai.',
+  det:/(じゃ|では)(ありません|ないです)/,
+  drills:[{q:'說：我不是學生。', a:'私は学生じゃありません。', r:'Watashi wa gakusei ja arimasen.'},{q:'說：今天不是休假日。', a:'今日は休みじゃありません。', r:'Kyō wa yasumi ja arimasen.'}] },
+{ key:'mashita', name:'〜ました／〜ませんでした', connect:'動詞ます形＋ました／ませんでした', zh:'過去式：「做了／（那時）沒做」', nuance:'丁寧體的過去；常體是「〜た／〜なかった」',
+  pj:'昨日、資料を送りました。', pr:'Kinō, shiryō o okurimashita.', cj:'昨日、資料を送った。', cr:'Kinō, shiryō o okutta.',
+  det:/(ました|ませんでした)/,
+  drills:[{q:'說：我昨天看了那部電影。', a:'昨日、その映画を見ました。', r:'Kinō, sono eiga o mimashita.'},{q:'說：上週沒去公司。', a:'先週、会社に行きませんでした。', r:'Senshū, kaisha ni ikimasen deshita.'}] },
+{ key:'mashou', name:'〜ましょう', connect:'動詞ます形＋ましょう', zh:'提議一起做：「〜吧！」', nuance:'邀對方一起行動，語氣積極；常體是「〜よう」',
+  pj:'一緒に昼ご飯を食べましょう。', pr:'Issho ni hirugohan o tabemashō.', cj:'一緒に昼ご飯食べよう。', cr:'Issho ni hirugohan tabeyō.',
+  det:/ましょう(?!か)/,
+  drills:[{q:'提議：明天一起去吧！', a:'明日、一緒に行きましょう。', r:'Ashita, issho ni ikimashō.'},{q:'提議：開始開會吧。', a:'会議を始めましょう。', r:'Kaigi o hajimemashō.'}] },
+{ key:'mashou-ka', name:'〜ましょうか', connect:'動詞ます形＋ましょうか', zh:'主動提出幫忙：「要不要我〜？」', nuance:'提供協助時的客氣說法；也可用於「我們〜好嗎？」',
+  pj:'荷物を持ちましょうか。', pr:'Nimotsu o mochimashō ka.', cj:'荷物持とうか？', cr:'Nimotsu motō ka?',
+  det:/ましょうか/,
+  drills:[{q:'提出幫忙：要不要我幫你拍照？', a:'写真を撮りましょうか。', r:'Shashin o torimashō ka.'},{q:'提出幫忙：要不要我送你到車站？', a:'駅まで送りましょうか。', r:'Eki made okurimashō ka.'}] },
+{ key:'masen-ka', name:'〜ませんか', connect:'動詞ます形＋ませんか', zh:'邀請：「要不要一起〜？」', nuance:'比「ましょう」更尊重對方意願，是最常用的邀請句型',
+  pj:'今度、食事に行きませんか。', pr:'Kondo, shokuji ni ikimasen ka.', cj:'今度ご飯行かない？', cr:'Kondo gohan ikanai?',
+  det:/ませんか/,
+  drills:[{q:'邀請對方：週末要不要一起打高爾夫？', a:'週末、一緒にゴルフをしませんか。', r:'Shūmatsu, issho ni gorufu o shimasen ka.'},{q:'邀請對方：要不要喝杯咖啡？', a:'コーヒーを飲みませんか。', r:'Kōhī o nomimasen ka.'}] },
+{ key:'te-kudasai', name:'〜てください', connect:'動詞て形＋ください', zh:'請求對方做：「請〜」', nuance:'一般禮貌請求；對上位者用「〜ていただけますか」更客氣',
+  pj:'ここに名前を書いてください。', pr:'Koko ni namae o kaite kudasai.', cj:'ここに名前書いて。', cr:'Koko ni namae kaite.',
+  det:/(?<!ない)[てで]ください/,
+  drills:[{q:'請對方：請稍等一下。', a:'ちょっと待ってください。', r:'Chotto matte kudasai.'},{q:'請對方：請再說一次。', a:'もう一度言ってください。', r:'Mō ichido itte kudasai.'}] },
+{ key:'te-mo-ii', name:'〜てもいいですか', connect:'動詞て形＋もいいですか', zh:'請求許可：「可以〜嗎？」', nuance:'禮貌請求允許；朋友間說「〜てもいい？」',
+  pj:'写真を撮ってもいいですか。', pr:'Shashin o totte mo ii desu ka.', cj:'写真撮ってもいい？', cr:'Shashin totte mo ii?',
+  det:/[てで]もいい(ですか|？)/,
+  drills:[{q:'問對方：這裡可以坐嗎？', a:'ここに座ってもいいですか。', r:'Koko ni suwatte mo ii desu ka.'},{q:'問店員：可以試穿這件嗎？', a:'これを試着してもいいですか。', r:'Kore o shichaku shite mo ii desu ka.'}] },
+{ key:'te-wa-ikemasen', name:'〜てはいけません', connect:'動詞て形＋はいけません', zh:'禁止：「不可以〜」', nuance:'規則性的禁止，語氣強；口語常說「〜ちゃだめ」',
+  pj:'ここでタバコを吸ってはいけません。', pr:'Koko de tabako o sutte wa ikemasen.', cj:'ここでタバコ吸っちゃだめ。', cr:'Koko de tabako sutcha dame.',
+  det:/[てで]はいけません|ちゃだめ|じゃだめ/,
+  drills:[{q:'說：這裡不可以停車。', a:'ここに車を止めてはいけません。', r:'Koko ni kuruma o tomete wa ikemasen.'},{q:'說：不可以忘記密碼。', a:'パスワードを忘れてはいけません。', r:'Pasuwādo o wasurete wa ikemasen.'}] },
+{ key:'te-imasu', name:'〜ています', connect:'動詞て形＋います', zh:'正在做／狀態持續：「正在〜／〜著」', nuance:'進行（正在吃）與狀態（結婚了、住在）都用這個；常體「〜ている／〜てる」',
+  pj:'今、資料を作っています。', pr:'Ima, shiryō o tsukutte imasu.', cj:'今、資料作ってる。', cr:'Ima, shiryō tsukutteru.',
+  det:/[てで]い(ます|る)/,
+  drills:[{q:'說：我住在台北。', a:'台北に住んでいます。', r:'Taipei ni sunde imasu.'},{q:'說：我正在學日語。', a:'日本語を勉強しています。', r:'Nihongo o benkyō shite imasu.'}] },
+{ key:'te-kara', name:'〜てから', connect:'動詞て形＋から', zh:'先後順序：「〜之後再…」', nuance:'強調動作順序：先做完前項才做後項',
+  pj:'仕事が終わってから、電話します。', pr:'Shigoto ga owatte kara, denwa shimasu.', cj:'仕事終わってから電話するね。', cr:'Shigoto owatte kara denwa suru ne.',
+  det:/[てで]から/,
+  drills:[{q:'說：確認之後再回覆您。', a:'確認してから、返事します。', r:'Kakunin shite kara, henji shimasu.'},{q:'說：吃完飯後再去。', a:'ご飯を食べてから、行きます。', r:'Gohan o tabete kara, ikimasu.'}] },
+{ key:'te-mimasu', name:'〜てみます', connect:'動詞て形＋みます', zh:'嘗試：「〜看看」', nuance:'試著做做看，不確定結果；「食べてみてください」＝請吃吃看',
+  pj:'この方法を試してみます。', pr:'Kono hōhō o tameshite mimasu.', cj:'この方法試してみる。', cr:'Kono hōhō tameshite miru.',
+  det:/[てで]み(ます|る|たい|て)/,
+  drills:[{q:'說：我問問看主管。', a:'上司に聞いてみます。', r:'Jōshi ni kiite mimasu.'},{q:'說：我穿穿看這件。', a:'これを着てみます。', r:'Kore o kite mimasu.'}] },
+{ key:'te-shimaimashita', name:'〜てしまいました', connect:'動詞て形＋しまいました', zh:'完了／懊悔：「（不小心）〜了」', nuance:'表示做完，或帶著遺憾懊悔的心情；口語縮成「〜ちゃった」',
+  pj:'書類を忘れてしまいました。', pr:'Shorui o wasurete shimaimashita.', cj:'書類忘れちゃった。', cr:'Shorui wasurechatta.',
+  det:/[てで]しまい|ちゃった|じゃった/,
+  drills:[{q:'說：不小心遲到了。', a:'遅刻してしまいました。', r:'Chikoku shite shimaimashita.'},{q:'說：把傘忘在電車上了。', a:'電車に傘を忘れてしまいました。', r:'Densha ni kasa o wasurete shimaimashita.'}] },
+{ key:'te-okimasu', name:'〜ておきます', connect:'動詞て形＋おきます', zh:'預先準備：「先〜好」', nuance:'為了之後方便先做好；口語縮成「〜とく」',
+  pj:'会議の前に資料を読んでおきます。', pr:'Kaigi no mae ni shiryō o yonde okimasu.', cj:'会議の前に資料読んどく。', cr:'Kaigi no mae ni shiryō yondoku.',
+  det:/[てで]おき(ます|ました)|[てで]おく|ておいて|とく。|どく。/,
+  drills:[{q:'說：我先訂好餐廳。', a:'レストランを予約しておきます。', r:'Resutoran o yoyaku shite okimasu.'},{q:'說：先買好飲料吧。', a:'飲み物を買っておきましょう。', r:'Nomimono o katte okimashō.'}] },
+{ key:'te-juju', name:'〜てあげる／くれる／もらう', connect:'動詞て形＋あげます/くれます/もらいます', zh:'為誰做：「幫〜做／〜幫我做／請〜幫我做」', nuance:'方向很重要：あげる我→人、くれる人→我、もらう我請人。「てあげる」對上位者失禮，慎用',
+  pj:'友達が手伝ってくれました。', pr:'Tomodachi ga tetsudatte kuremashita.', cj:'友達が手伝ってくれた。', cr:'Tomodachi ga tetsudatte kureta.',
+  det:/[てで](あげ|くれ|もら)/,
+  drills:[{q:'說：田中先生教了我日語（用くれる）。', a:'田中さんが日本語を教えてくれました。', r:'Tanaka-san ga nihongo o oshiete kuremashita.'},{q:'說：我請朋友幫我拍了照（用もらう）。', a:'友達に写真を撮ってもらいました。', r:'Tomodachi ni shashin o totte moraimashita.'}] },
+{ key:'tai-desu', name:'〜たいです', connect:'動詞ます形＋たいです', zh:'想做：「想〜」', nuance:'自己的願望；問對方願望時多用「〜たいですか」以外的委婉說法',
+  pj:'日本へ旅行に行きたいです。', pr:'Nihon e ryokō ni ikitai desu.', cj:'日本へ旅行に行きたい！', cr:'Nihon e ryokō ni ikitai!',
+  det:/(?<!冷|重|めで)たい(です|んです|と思|。|！|？)/,
+  drills:[{q:'說：我想吃壽司。', a:'寿司を食べたいです。', r:'Sushi o tabetai desu.'},{q:'說：我想見你。', a:'あなたに会いたいです。', r:'Anata ni aitai desu.'}] },
+{ key:'ga-hoshii', name:'〜がほしいです', connect:'名詞＋がほしいです', zh:'想要（東西）：「想要〜」', nuance:'想要「物品」用ほしい；想「做」某事用〜たい',
+  pj:'新しいパソコンがほしいです。', pr:'Atarashii pasokon ga hoshii desu.', cj:'新しいパソコンがほしい。', cr:'Atarashii pasokon ga hoshii.',
+  det:/がほしい|が欲しい/,
+  drills:[{q:'說：我想要休假。', a:'休みがほしいです。', r:'Yasumi ga hoshii desu.'},{q:'說：我想要更多時間。', a:'もっと時間がほしいです。', r:'Motto jikan ga hoshii desu.'}] },
+{ key:'ta-koto-ga-aru', name:'〜たことがあります', connect:'動詞た形＋ことがあります', zh:'經驗：「曾經〜過」', nuance:'談人生經驗；沒有經驗說「〜たことがありません」',
+  pj:'日本へ行ったことがあります。', pr:'Nihon e itta koto ga arimasu.', cj:'日本行ったことある。', cr:'Nihon itta koto aru.',
+  det:/(?<!たいし)[ただ]こと(が|も)?あ(り|る)/,
+  drills:[{q:'說：我吃過納豆。', a:'納豆を食べたことがあります。', r:'Nattō o tabeta koto ga arimasu.'},{q:'說：我沒看過富士山。', a:'富士山を見たことがありません。', r:'Fujisan o mita koto ga arimasen.'}] },
+{ key:'tari-tari', name:'〜たり〜たりします', connect:'動詞た形＋り、動詞た形＋りします', zh:'列舉：「又〜又〜、做做這個做做那個」', nuance:'列舉代表性的幾件事，暗示還有其他',
+  pj:'休みの日は映画を見たり、買い物したりします。', pr:'Yasumi no hi wa eiga o mitari, kaimono shitari shimasu.', cj:'休みの日は映画見たり買い物したりする。', cr:'Yasumi no hi wa eiga mitari kaimono shitari suru.',
+  det:/[ただ]り.*[ただ]り/,
+  drills:[{q:'說：週末會看看書、跑跑步。', a:'週末は本を読んだり、走ったりします。', r:'Shūmatsu wa hon o yondari, hashittari shimasu.'},{q:'說：在日本吃了美食、逛了寺廟。', a:'日本でおいしいものを食べたり、お寺を見たりしました。', r:'Nihon de oishii mono o tabetari, otera o mitari shimashita.'}] },
+{ key:'ta-hou-ga-ii', name:'〜たほうがいいです', connect:'動詞た形＋ほうがいいです', zh:'建議：「最好〜」', nuance:'給對方建議；否定用「〜ないほうがいい」（接ない形不是た形）',
+  pj:'早く病院へ行ったほうがいいですよ。', pr:'Hayaku byōin e itta hō ga ii desu yo.', cj:'早く病院行ったほうがいいよ。', cr:'Hayaku byōin itta hō ga ii yo.',
+  det:/[ただ](ほうが|方が)いい/,
+  drills:[{q:'建議對方：最好先預約。', a:'先に予約したほうがいいですよ。', r:'Saki ni yoyaku shita hō ga ii desu yo.'},{q:'建議對方：最好多休息。', a:'ゆっくり休んだほうがいいですよ。', r:'Yukkuri yasunda hō ga ii desu yo.'}] },
+{ key:'ta-bakari', name:'〜たばかりです', connect:'動詞た形＋ばかりです', zh:'剛剛才：「才剛〜」', nuance:'說話者覺得時間很短就能用，即使實際過了一陣子',
+  pj:'さっき着いたばかりです。', pr:'Sakki tsuita bakari desu.', cj:'さっき着いたばかり。', cr:'Sakki tsuita bakari.',
+  det:/[ただ]ばかり/,
+  drills:[{q:'說：我上個月才剛開始學日語。', a:'先月、日本語を習い始めたばかりです。', r:'Sengetsu, nihongo o naraihajimeta bakari desu.'},{q:'說：才剛吃過午餐。', a:'昼ご飯を食べたばかりです。', r:'Hirugohan o tabeta bakari desu.'}] },
+{ key:'tara', name:'〜たら', connect:'動詞た形＋ら', zh:'假定／之後：「如果〜的話／〜了之後」', nuance:'最百搭的假定形；也表「做完A之後B」',
+  pj:'駅に着いたら、連絡してください。', pr:'Eki ni tsuitara, renraku shite kudasai.', cj:'駅に着いたら連絡して。', cr:'Eki ni tsuitara renraku shite.',
+  det:/[ただ]ら、/,
+  drills:[{q:'說：如果下雨的話就不去。', a:'雨が降ったら、行きません。', r:'Ame ga futtara, ikimasen.'},{q:'說：到了日本請跟我聯絡。', a:'日本に着いたら、連絡してください。', r:'Nihon ni tsuitara, renraku shite kudasai.'}] },
+{ key:'tara-dou', name:'〜たらどうですか', connect:'動詞た形＋らどうですか', zh:'委婉建議：「〜如何？要不要〜？」', nuance:'比「たほうがいい」更委婉；口語「〜たら？」',
+  pj:'先生に相談したらどうですか。', pr:'Sensei ni sōdan shitara dō desu ka.', cj:'先生に相談したら？', cr:'Sensei ni sōdan shitara?',
+  det:/[ただ]らどう(ですか|？)/,
+  drills:[{q:'建議：要不要早點睡？', a:'早く寝たらどうですか。', r:'Hayaku netara dō desu ka.'},{q:'建議：要不要問問店員？', a:'店員に聞いたらどうですか。', r:'Ten\'in ni kiitara dō desu ka.'}] },
+{ key:'naide-kudasai', name:'〜ないでください', connect:'動詞ない形＋でください', zh:'請不要：「請別〜」', nuance:'禮貌地請對方不要做；口語「〜ないで」',
+  pj:'ここに荷物を置かないでください。', pr:'Koko ni nimotsu o okanaide kudasai.', cj:'ここに荷物置かないで。', cr:'Koko ni nimotsu okanaide.',
+  det:/ないでください|ないで。/,
+  drills:[{q:'請對方：請不要忘記。', a:'忘れないでください。', r:'Wasurenaide kudasai.'},{q:'請對方：請不要擔心。', a:'心配しないでください。', r:'Shinpai shinaide kudasai.'}] },
+{ key:'nakereba', name:'〜なければなりません', connect:'動詞ない形（去い）＋ければなりません', zh:'必須：「不得不〜、必須〜」', nuance:'義務；口語縮成「〜なきゃ」「〜ないと」',
+  pj:'明日までに返事しなければなりません。', pr:'Ashita made ni henji shinakereba narimasen.', cj:'明日までに返事しなきゃ。', cr:'Ashita made ni henji shinakya.',
+  det:/なければ(なりません|いけません)|なきゃ|ないといけ|なくてはいけ/,
+  drills:[{q:'說：我必須加班。', a:'残業しなければなりません。', r:'Zangyō shinakereba narimasen.'},{q:'說：必須在五點前回家。', a:'五時までに帰らなければなりません。', r:'Goji made ni kaeranakereba narimasen.'}] },
+{ key:'nakutemo-ii', name:'〜なくてもいいです', connect:'動詞ない形（去い）＋くてもいいです', zh:'不必：「可以不〜、不用〜」', nuance:'免除義務；跟「なければならない」成對記',
+  pj:'明日は来なくてもいいですよ。', pr:'Ashita wa konakute mo ii desu yo.', cj:'明日は来なくてもいいよ。', cr:'Ashita wa konakute mo ii yo.',
+  det:/なくてもいい/,
+  drills:[{q:'說：不用付錢喔。', a:'お金を払わなくてもいいですよ。', r:'Okane o harawanakute mo ii desu yo.'},{q:'說：可以不用急。', a:'急がなくてもいいですよ。', r:'Isoganakute mo ii desu yo.'}] },
+{ key:'nai-hou-ga-ii', name:'〜ないほうがいいです', connect:'動詞ない形＋ほうがいいです', zh:'建議別做：「最好別〜」', nuance:'負面建議；跟「たほうがいい」成對記',
+  pj:'今日は出かけないほうがいいですよ。', pr:'Kyō wa dekakenai hō ga ii desu yo.', cj:'今日は出かけないほうがいいよ。', cr:'Kyō wa dekakenai hō ga ii yo.',
+  det:/ない(ほうが|方が)いい/,
+  drills:[{q:'建議：最好別喝太多。', a:'飲みすぎないほうがいいですよ。', r:'Nomisuginai hō ga ii desu yo.'},{q:'建議：最好別遲到。', a:'遅刻しないほうがいいですよ。', r:'Chikoku shinai hō ga ii desu yo.'}] },
+{ key:'koto-ga-dekimasu', name:'〜ことができます', connect:'動詞辞書形＋ことができます', zh:'能夠：「會〜、可以〜」', nuance:'能力或許可；比可能形更正式一點',
+  pj:'日本語を話すことができます。', pr:'Nihongo o hanasu koto ga dekimasu.', cj:'日本語を話すことができる。', cr:'Nihongo o hanasu koto ga dekiru.',
+  det:/ことができ(ます|る|ません|ない)/,
+  drills:[{q:'說：我會開車。', a:'車を運転することができます。', r:'Kuruma o unten suru koto ga dekimasu.'},{q:'說：這裡可以刷卡。', a:'ここではカードで払うことができます。', r:'Koko de wa kādo de harau koto ga dekimasu.'}] },
+{ key:'mae-ni', name:'〜前に', connect:'動詞辞書形／名詞の＋前に', zh:'之前：「〜之前先…」', nuance:'動詞用辞書形（不管時態）；名詞加の',
+  pj:'寝る前に、歯を磨きます。', pr:'Neru mae ni, ha o migakimasu.', cj:'寝る前に歯を磨く。', cr:'Neru mae ni ha o migaku.',
+  det:/る前に|の前に/,
+  drills:[{q:'說：開會之前先看資料。', a:'会議の前に、資料を読みます。', r:'Kaigi no mae ni, shiryō o yomimasu.'},{q:'說：吃飯前要洗手。', a:'食べる前に、手を洗います。', r:'Taberu mae ni, te o araimasu.'}] },
+{ key:'tsumori', name:'〜つもりです', connect:'動詞辞書形／ない形＋つもりです', zh:'打算：「打算〜」', nuance:'已決定的個人打算；不打算＝「〜ないつもり」',
+  pj:'来年、日本へ留学するつもりです。', pr:'Rainen, Nihon e ryūgaku suru tsumori desu.', cj:'来年、日本へ留学するつもり。', cr:'Rainen, Nihon e ryūgaku suru tsumori.',
+  det:/つもり(です|だ|は|。)/,
+  drills:[{q:'說：我打算週末去爬山。', a:'週末、山に登るつもりです。', r:'Shūmatsu, yama ni noboru tsumori desu.'},{q:'說：我不打算換工作。', a:'転職しないつもりです。', r:'Tenshoku shinai tsumori desu.'}] },
+{ key:'koto-ni-shimasu', name:'〜ことにします', connect:'動詞辞書形／ない形＋ことにします', zh:'決定：「（自己）決定〜」', nuance:'自己下的決定；「ことになりました」則是外部決定',
+  pj:'毎日、日本語を勉強することにします。', pr:'Mainichi, nihongo o benkyō suru koto ni shimasu.', cj:'毎日、日本語を勉強することにする。', cr:'Mainichi, nihongo o benkyō suru koto ni suru.',
+  det:/ことにし(ます|ました|た|よう)/,
+  drills:[{q:'說：我決定戒菸。', a:'タバコをやめることにしました。', r:'Tabako o yameru koto ni shimashita.'},{q:'說：我決定每天走路上班。', a:'毎日歩いて出勤することにしました。', r:'Mainichi aruite shukkin suru koto ni shimashita.'}] },
+{ key:'to-omoimasu', name:'〜と思います', connect:'普通形＋と思います', zh:'我覺得：「我認為〜、我想〜」', nuance:'表達自己的意見或推測，前面接普通形',
+  pj:'この店はおいしいと思います。', pr:'Kono mise wa oishii to omoimasu.', cj:'この店おいしいと思う。', cr:'Kono mise oishii to omou.',
+  det:/と(思います|思う|思って)/,
+  drills:[{q:'說：我覺得明天會下雨。', a:'明日は雨が降ると思います。', r:'Ashita wa ame ga furu to omoimasu.'},{q:'說：我覺得這個價格很便宜。', a:'この値段は安いと思います。', r:'Kono nedan wa yasui to omoimasu.'}] },
+{ key:'to-itteimashita', name:'〜と言っていました', connect:'普通形＋と言っていました', zh:'轉述：「（某人）說〜」', nuance:'轉達第三者說過的話；口語「〜って言ってた」',
+  pj:'田中さんは明日来ると言っていました。', pr:'Tanaka-san wa ashita kuru to itte imashita.', cj:'田中さん、明日来るって言ってた。', cr:'Tanaka-san, ashita kuru tte itteta.',
+  det:/と言ってい(ました|た)|って言ってた/,
+  drills:[{q:'轉述：部長說會議改到三點。', a:'部長は会議は三時になると言っていました。', r:'Buchō wa kaigi wa sanji ni naru to itte imashita.'},{q:'轉述：他說他很忙。', a:'彼は忙しいと言っていました。', r:'Kare wa isogashii to itte imashita.'}] },
+{ key:'kamoshiremasen', name:'〜かもしれません', connect:'普通形＋かもしれません', zh:'也許：「可能〜、說不定〜」', nuance:'把握度低（約 50% 以下）；口語「〜かも」',
+  pj:'明日は雨かもしれません。', pr:'Ashita wa ame kamoshiremasen.', cj:'明日、雨かも。', cr:'Ashita, ame kamo.',
+  det:/かもしれ|かも。/,
+  drills:[{q:'說：我可能會遲到。', a:'遅れるかもしれません。', r:'Okureru kamoshiremasen.'},{q:'說：他可能不知道。', a:'彼は知らないかもしれません。', r:'Kare wa shiranai kamoshiremasen.'}] },
+{ key:'deshou', name:'〜でしょう', connect:'普通形＋でしょう', zh:'推測：「大概〜吧」', nuance:'把握度較高的推測；語尾上揚「でしょう？」是確認「對吧？」',
+  pj:'明日は晴れるでしょう。', pr:'Ashita wa hareru deshō.', cj:'明日は晴れるだろう。', cr:'Ashita wa hareru darō.',
+  det:/でしょう/,
+  drills:[{q:'說：他大概會來吧。', a:'彼は来るでしょう。', r:'Kare wa kuru deshō.'},{q:'跟對方確認：很好吃對吧？', a:'おいしいでしょう？', r:'Oishii deshō?'}] },
+{ key:'n-desu', name:'〜んです', connect:'普通形＋んです（な形容詞・名詞＋なんです）', zh:'說明語氣：「（是因為）〜」', nuance:'說明理由、強調狀況，對話中超高頻；問句「どうしたんですか」＝怎麼了',
+  pj:'頭が痛いんです。', pr:'Atama ga itai n desu.', cj:'頭が痛いんだ。', cr:'Atama ga itai n da.',
+  det:/んです|のです|んだ。|なんです/,
+  drills:[{q:'說明理由：因為明天有考試（所以…）。', a:'明日、試験があるんです。', r:'Ashita, shiken ga aru n desu.'},{q:'關心對方：怎麼了嗎？', a:'どうしたんですか。', r:'Dō shita n desu ka.'}] },
+{ key:'node', name:'〜ので', connect:'普通形＋ので（な形容詞・名詞＋なので）', zh:'因為：「因為〜所以…」', nuance:'比「から」客氣柔和，適合對上位者與書面',
+  pj:'用事があるので、お先に失礼します。', pr:'Yōji ga aru node, osaki ni shitsurei shimasu.', cj:'用事があるから、お先に！', cr:'Yōji ga aru kara, osaki ni!',
+  det:/ので、|なので/,
+  drills:[{q:'說：因為感冒了，今天請假。', a:'風邪をひいたので、今日は休みます。', r:'Kaze o hiita node, kyō wa yasumimasu.'},{q:'說：因為很方便，我每天都用。', a:'便利なので、毎日使っています。', r:'Benri na node, mainichi tsukatte imasu.'}] },
+{ key:'noni', name:'〜のに', connect:'普通形＋のに（な形容詞・名詞＋なのに）', zh:'明明卻：「明明〜卻…」', nuance:'帶有意外、不滿的語氣；跟「が／けど」相比感情色彩更強',
+  pj:'薬を飲んだのに、治りません。', pr:'Kusuri o nonda noni, naorimasen.', cj:'薬飲んだのに治らない。', cr:'Kusuri nonda noni naoranai.',
+  det:/のに、|のに。/,
+  drills:[{q:'說：明明約好了他卻沒來。', a:'約束したのに、彼は来ませんでした。', r:'Yakusoku shita noni, kare wa kimasen deshita.'},{q:'說：明明很貴卻不好吃。', a:'高いのに、おいしくないです。', r:'Takai noni, oishikunai desu.'}] },
+{ key:'sou-desu', name:'〜そうです（傳聞／樣態）', connect:'普通形＋そうです（傳聞）／ます形去ます・い形容詞去い＋そうです（樣態）', zh:'聽說〜／看起來〜', nuance:'兩用：接普通形＝聽說（雨が降るそうです）；接ます形語幹＝看起來（雨が降りそうです）',
+  pj:'このケーキはおいしそうです。', pr:'Kono kēki wa oishisō desu.', cj:'このケーキおいしそう！', cr:'Kono kēki oishisō!',
+  det:/(い|な|る|た|り|し|き|み|び|ち)そう(です|だ。|！)/,
+  drills:[{q:'說：那部電影看起來很有趣。', a:'その映画はおもしろそうです。', r:'Sono eiga wa omoshirosō desu.'},{q:'說：聽說田中先生要調職。', a:'田中さんは転勤するそうです。', r:'Tanaka-san wa tenkin suru sō desu.'}] },
+{ key:'you-mitai', name:'〜ようです／〜みたいです', connect:'普通形＋ようです／みたいです', zh:'好像：「似乎〜」', nuance:'根據觀察的推測；みたい較口語，よう較正式',
+  pj:'彼は忙しいようです。', pr:'Kare wa isogashii yō desu.', cj:'彼、忙しいみたい。', cr:'Kare, isogashii mitai.',
+  det:/ようです|(ない|た|る|い)みたい(です|。|だ)/,
+  drills:[{q:'說：店好像關了。', a:'店は閉まっているようです。', r:'Mise wa shimatte iru yō desu.'},{q:'說：他好像感冒了。', a:'彼は風邪をひいたみたいです。', r:'Kare wa kaze o hiita mitai desu.'}] },
+{ key:'sugimasu', name:'〜すぎます', connect:'動詞ます形去ます／形容詞去い＋すぎます', zh:'過度：「太〜、〜過頭」', nuance:'負面評價居多：食べすぎた（吃太多）、高すぎる（太貴）',
+  pj:'昨日は飲みすぎました。', pr:'Kinō wa nomisugimashita.', cj:'昨日飲みすぎた。', cr:'Kinō nomisugita.',
+  det:/すぎ(ます|ました|る|た|て)/,
+  drills:[{q:'說：這個太貴了。', a:'これは高すぎます。', r:'Kore wa takasugimasu.'},{q:'說：我工作過頭了。', a:'働きすぎました。', r:'Hatarakisugimashita.'}] },
+{ key:'kanoukei', name:'可能形（〜える／〜られる）', connect:'五段：う段→え段＋る；一段：る→られる', zh:'能夠：「會〜、能〜」', nuance:'能力與可能；口語一段動詞常說「ら抜き」（見れる），正式場合用見られる',
+  pj:'私は少し日本語が話せます。', pr:'Watashi wa sukoshi nihongo ga hanasemasu.', cj:'少し日本語話せる。', cr:'Sukoshi nihongo hanaseru.',
+  det:/(飲め|食べられ|読め|書け|話せ|行け|来られ|使え|買え|作れ|泳げ|会え|見られ|食べれ|見れ)(ます|る|ません|ない)/,
+  drills:[{q:'說：我會用筷子。', a:'箸が使えます。', r:'Hashi ga tsukaemasu.'},{q:'問對方：明天能見面嗎？', a:'明日、会えますか。', r:'Ashita, aemasu ka.'}] },
+{ key:'ikou-to-omou', name:'意向形＋と思っています', connect:'動詞意向形（〜よう／〜おう）＋と思っています', zh:'打算：「想要〜、打算〜」', nuance:'比「つもり」柔軟，還在考慮中的打算',
+  pj:'夏休みに北海道へ行こうと思っています。', pr:'Natsuyasumi ni Hokkaidō e ikō to omotte imasu.', cj:'夏休みに北海道行こうと思ってる。', cr:'Natsuyasumi ni Hokkaidō ikō to omotteru.',
+  det:/(?<!だろ|であろ)うと(思って|思い)/,
+  drills:[{q:'說：我打算開始運動。', a:'運動を始めようと思っています。', r:'Undō o hajimeyō to omotte imasu.'},{q:'說：我打算買新手機。', a:'新しいスマホを買おうと思っています。', r:'Atarashii sumaho o kaō to omotte imasu.'}] },
+{ key:'yori-hou-ga', name:'〜より〜のほうが', connect:'AよりBのほうが＋形容詞', zh:'比較：「B 比 A 更〜」', nuance:'「Aより」可省略；問句用「AとB、どちらが〜」',
+  pj:'電車よりタクシーのほうが速いです。', pr:'Densha yori takushī no hō ga hayai desu.', cj:'電車よりタクシーのほうが速い。', cr:'Densha yori takushī no hō ga hayai.',
+  det:/より.*(ほうが|方が)|のほうが/,
+  drills:[{q:'說：夏天比冬天更喜歡。', a:'冬より夏のほうが好きです。', r:'Fuyu yori natsu no hō ga suki desu.'},{q:'說：這家店比那家便宜。', a:'あの店よりこの店のほうが安いです。', r:'Ano mise yori kono mise no hō ga yasui desu.'}] },
+{ key:'de-ichiban', name:'〜で一番〜', connect:'範圍＋で一番＋形容詞', zh:'最高級：「在〜之中最〜」', nuance:'範圍用で標示：日本で一番高い山',
+  pj:'このメニューで一番人気なのはどれですか。', pr:'Kono menyū de ichiban ninki na no wa dore desu ka.', cj:'このメニューで一番人気なのはどれ？', cr:'Kono menyū de ichiban ninki na no wa dore?',
+  det:/で(一番|いちばん)/,
+  drills:[{q:'問：日本最好吃的拉麵在哪裡？', a:'日本で一番おいしいラーメンはどこですか。', r:'Nihon de ichiban oishii rāmen wa doko desu ka.'},{q:'說：家人之中爸爸最忙。', a:'家族で父が一番忙しいです。', r:'Kazoku de chichi ga ichiban isogashii desu.'}] },
+{ key:'juju', name:'あげます／くれます／もらいます', connect:'（物品）を＋あげます/くれます/もらいます', zh:'授受：「給／給我／收到」', nuance:'あげる我給人、くれる人給我、もらう我從人那收到；に標示對象',
+  pj:'友達にお土産をもらいました。', pr:'Tomodachi ni omiyage o moraimashita.', cj:'友達にお土産もらった。', cr:'Tomodachi ni omiyage moratta.',
+  det:/を(あげ(?!て)|くれ|もらい|もらっ)|が(くれ|もらっ)/,
+  drills:[{q:'說：我送了媽媽花。', a:'母に花をあげました。', r:'Haha ni hana o agemashita.'},{q:'說：田中先生給了我伴手禮。', a:'田中さんがお土産をくれました。', r:'Tanaka-san ga omiyage o kuremashita.'}] },
+{ key:'te-itadakemasuka', name:'〜ていただけますか', connect:'動詞て形＋いただけますか', zh:'更客氣的請求：「能否請您〜？」', nuance:'商務、對上位者的標準請求句；比てください客氣一大級',
+  pj:'資料を送っていただけますか。', pr:'Shiryō o okutte itadakemasu ka.', cj:'資料送ってもらえる？', cr:'Shiryō okutte moraeru?',
+  det:/[てで]いただけ(ます|ません)か/,
+  drills:[{q:'商務請求：能否請您再確認一次？', a:'もう一度確認していただけますか。', r:'Mō ichido kakunin shite itadakemasu ka.'},{q:'商務請求：能否請您再稍等一下？', a:'もう少し待っていただけますか。', r:'Mō sukoshi matte itadakemasu ka.'}] },
+{ key:'o-kudasai', name:'お〜ください', connect:'お＋動詞ます形去ます＋ください', zh:'尊敬的請求：「請〜」', nuance:'比てください更尊敬：お待ちください、お入りください；漢語動詞用「ご〜ください」',
+  pj:'こちらで少々お待ちください。', pr:'Kochira de shōshō omachi kudasai.', cj:'ちょっと待ってて。', cr:'Chotto mattete.',
+  det:/お(?!茶|水|金)[぀-ん一-鿿]{1,4}ください|ご[一-鿿]{1,4}ください/,
+  drills:[{q:'對客人說：請進。', a:'どうぞお入りください。', r:'Dōzo ohairi kudasai.'},{q:'對客人說：請確認內容。', a:'内容をご確認ください。', r:'Naiyō o gokakunin kudasai.'}] },
+{ key:'irasshaimasu', name:'いらっしゃいます', connect:'いる／行く／来る 的尊敬語', zh:'尊敬語：「在／去／來」', nuance:'對上位者的動作用；自己的動作用謙讓語（おります、参ります）',
+  pj:'田中様はいらっしゃいますか。', pr:'Tanaka-sama wa irasshaimasu ka.', cj:'田中さん、いる？', cr:'Tanaka-san, iru?',
+  det:/いらっしゃ/,
+  drills:[{q:'電話中問：請問社長在嗎？', a:'社長はいらっしゃいますか。', r:'Shachō wa irasshaimasu ka.'},{q:'問客戶：明天您會來嗎？', a:'明日、いらっしゃいますか。', r:'Ashita, irasshaimasu ka.'}] },
+{ key:'to-conditional', name:'〜と、〜', connect:'動詞辞書形＋と', zh:'一〜就：「一旦〜就會…」', nuance:'必然結果（自然規律、機器操作）；後句不能接意志、命令',
+  pj:'このボタンを押すと、ドアが開きます。', pr:'Kono botan o osu to, doa ga akimasu.', cj:'このボタン押すとドアが開く。', cr:'Kono botan osu to doa ga aku.',
+  det:/(る|う|く|す|つ|む|ぶ|ぐ|ぬ)と、/,
+  drills:[{q:'說：春天一到櫻花就開。', a:'春になると、桜が咲きます。', r:'Haru ni naru to, sakura ga sakimasu.'},{q:'說：直走就會看到車站。', a:'まっすぐ行くと、駅が見えます。', r:'Massugu iku to, eki ga miemasu.'}] },
+{ key:'ba-conditional', name:'〜ば', connect:'動詞條件形（う段→え段＋ば）／形容詞去い＋ければ', zh:'假定：「如果〜的話」', nuance:'偏重「條件成立就好」的假定；諺語慣用句常見',
+  pj:'安ければ、買います。', pr:'Yasukereba, kaimasu.', cj:'安ければ買う。', cr:'Yasukereba kau.',
+  det:/(?<!な)ければ|えば、|めば、|べば、|せば、|てば、|ねば、|げば、|れば、|けば、/,
+  drills:[{q:'說：如果有時間的話我會去。', a:'時間があれば、行きます。', r:'Jikan ga areba, ikimasu.'},{q:'問：怎麼做才好呢？', a:'どうすればいいですか。', r:'Dō sureba ii desu ka.'}] }
+];
+
+/* ---------------- 文法筆記（localStorage） ---------------- */
+let grammarNotes = Store.get('njp.grammar', []).filter(n => n && n.id).map(sanGrammarNote);
+const saveGrammar = debounce(() => Store.set('njp.grammar', grammarNotes), 300);
+function noteByKey(pk) { return grammarNotes.find(n => n.patternKey === pk); }
+function bumpNote(g, srcJa) {
+  let n = noteByKey(g.key);
+  if (!n) {
+    n = { id: uuid(), patternKey: g.key, name: g.name, explain: g.zh, srcJa: srcJa || g.pj,
+      drills: [], seenCount: 0, ts: Date.now() };
+    grammarNotes.push(n);
+  }
+  n.seenCount++;
+  if (srcJa) n.srcJa = srcJa;
+  saveGrammar();
+  return n;
+}
+function aiNote(name, explain, srcJa) {
+  const pk = 'ai:' + name;
+  let n = grammarNotes.find(x => x.patternKey === pk);
+  if (!n) {
+    n = { id: uuid(), patternKey: pk, name: name, explain: explain, srcJa: srcJa,
+      drills: [], seenCount: 0, ts: Date.now() };
+    grammarNotes.push(n);
+  }
+  n.seenCount++; saveGrammar(); return n;
+}
+
+/* ---------------- Claude API 客戶端（瀏覽器直連，零後端） ---------------- */
+const AI_MODELS = {
+  'claude-haiku-4-5':  { label: 'Haiku 4.5（最省，建議）', inR: 1, outR: 5 },
+  'claude-sonnet-4-6': { label: 'Sonnet 4.6（解釋更細）', inR: 3, outR: 15 },
+  'claude-opus-4-8':   { label: 'Opus 4.8（最強）', inR: 5, outR: 25 }
+};
+function hasKey() { return !!(settings.apiKey && settings.apiKey.length > 10); }
+function trackUsage(u) {
+  if (!u) return;
+  const month = new Date().toISOString().slice(0, 7);
+  const day = new Date().toISOString().slice(0, 10);
+  let a = settings.aiUsage;
+  if (!a || a.month !== month) a = settings.aiUsage = { month: month, calls: 0, inTok: 0, outTok: 0, day: day, dayCalls: 0 };
+  if (a.day !== day) { a.day = day; a.dayCalls = 0; }
+  a.calls++; a.dayCalls++;
+  a.inTok += u.input_tokens || 0; a.outTok += u.output_tokens || 0;
+  const m = AI_MODELS[settings.aiModel] || AI_MODELS['claude-haiku-4-5'];
+  a.cost = (Number(a.cost) || 0) + (((u.input_tokens || 0) * m.inR + (u.output_tokens || 0) * m.outR) / 1e6) * 30;
+  saveSettings();
+  if (a.dayCalls === 101) showToast('提醒：今天已呼叫 AI 超過 100 次');
+}
+function usageCostTWD() {
+  const a = settings.aiUsage;
+  return (a && Number(a.cost)) || 0;
+}
+async function claudeCall(system, user, schema) {
+  if (!hasKey()) throw new Error('請先到「設定」頁填入 Claude API key');
+  const body = {
+    model: settings.aiModel || 'claude-haiku-4-5',
+    max_tokens: 2000,
+    system: system,
+    messages: [{ role: 'user', content: user }]
+  };
+  if (schema) body.output_config = { format: { type: 'json_schema', schema: schema } };
+  const doFetch = () => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 30000);
+    return fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal: ctrl.signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': settings.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(body)
+    }).finally(() => clearTimeout(t));
+  };
+  let res, data;
+  try {
+    res = await doFetch();
+    data = await res.json().catch(() => ({}));
+    if (!res.ok && schema && /output_config|json_schema/i.test((data.error && data.error.message) || '')) {
+      delete body.output_config;           // 模型不支援結構化輸出時降級為純文字再自行解析
+      res = await doFetch();
+      data = await res.json().catch(() => ({}));
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('連線逾時（30 秒），請重試');
+    throw e;
+  }
+  if (!res.ok) throw new Error((data.error && data.error.message) || ('API 錯誤 ' + res.status));
+  if (data.stop_reason === 'max_tokens') throw new Error('回應過長被截斷，請縮短句子後重試');
+  trackUsage(data.usage);
+  const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  if (!schema) return txt;
+  try { return JSON.parse(txt); }
+  catch (e) {
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
+    throw new Error('AI 回傳格式異常，請重試');
+  }
+}
+const SCHEMA_ANALYZE = { type: 'object', properties: {
+  breakdown: { type: 'array', items: { type: 'object', properties: { part: { type: 'string' }, note: { type: 'string' } }, required: ['part', 'note'], additionalProperties: false } },
+  points: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, explain: { type: 'string' }, usage: { type: 'string' } }, required: ['name', 'explain', 'usage'], additionalProperties: false } },
+  nuance: { type: 'string' } }, required: ['breakdown', 'points', 'nuance'], additionalProperties: false };
+const SCHEMA_GRADE = { type: 'object', properties: {
+  ok: { type: 'boolean' }, corrected: { type: 'string' },
+  issues: { type: 'array', items: { type: 'string' } }, comment: { type: 'string' } },
+  required: ['ok', 'corrected', 'issues', 'comment'], additionalProperties: false };
+const SCHEMA_DRILLQ = { type: 'object', properties: {
+  question: { type: 'string' }, reference: { type: 'string' }, romaji: { type: 'string' } },
+  required: ['question', 'reference', 'romaji'], additionalProperties: false };
+const AI_SYSTEM = '你是溫和專業的日語老師，學生是母語為繁體中文、程度約 N5-N4 的台灣成人學習者。所有說明一律使用繁體中文（例句保留日文）。回答精簡直接。';
+function aiAnalyze(ja) {
+  return claudeCall(AI_SYSTEM,
+    '請解析這句日文的文法：「' + ja.slice(0, 500) + '」\n' +
+    'breakdown：把句子逐段拆解（單字／助詞／動詞變形），每段一句簡短說明。\n' +
+    'points：這句用到的文法句型清單（name 句型名、explain 一般性說明、usage 在這句裡的具體用法）。\n' +
+    'nuance：語感備註（丁寧度、適合的場合、台灣學習者常見的誤用）。', SCHEMA_ANALYZE);
+}
+function aiGrade(patternName, question, answer) {
+  return claudeCall(AI_SYSTEM,
+    '學生在練習句型「' + patternName + '」。\n題目（中文情境）：' + question + '\n學生的日文作答：「' + answer.slice(0, 300) + '」\n' +
+    '請批改：ok（文法與句型使用是否正確）、corrected（訂正後的自然說法，若原句已正確就照抄）、issues（具體錯誤點，如助詞、變形、語感，沒有就空陣列）、comment（一句話回饋，先肯定再指正）。', SCHEMA_GRADE);
+}
+function aiMakeDrill(patternName, explain) {
+  return claudeCall(AI_SYSTEM,
+    '請為句型「' + patternName + '」出一題照樣造句練習（' + explain.slice(0, 100) + '）。\n' +
+    'question：中文情境題（例：「用〜てもいいですか問對方：這裡可以拍照嗎？」）。\nreference：參考解答（自然的日文）。\nromaji：參考解答的羅馬拼音。', SCHEMA_DRILLQ);
+}
+
+/* ---------------- 文法面板（bottom sheet） ---------------- */
+const gsheetWrap = document.getElementById('gsheet-wrap');
+const gsheetBody = document.getElementById('gsheet-body');
+let gsheetJa = '';
+document.getElementById('gsheet-close').addEventListener('click', closeGrammarSheet);
+document.getElementById('gsheet-backdrop').addEventListener('click', closeGrammarSheet);
+function closeGrammarSheet() { gsheetWrap.classList.add('hidden'); }
+function gcardHTML(g) {
+  return '<div class="gcard">' +
+    '<div class="gname">' + esc(g.name) + '</div>' +
+    '<div class="gconn">' + esc(g.connect) + '</div>' +
+    '<div class="gzh">' + esc(g.zh) + '</div>' +
+    '<div class="gnuance">' + esc(g.nuance) + '</div>' +
+    '<div class="gex"><span class="gtag">丁寧</span>' + esc(g.pj) + '<div class="romaji-line">' + esc(g.pr) + '</div></div>' +
+    '<div class="gex"><span class="gtag">常體</span>' + esc(g.cj) + '<div class="romaji-line">' + esc(g.cr) + '</div></div>' +
+    '<div style="margin-top:8px;"><button class="setbtn" data-gdrill="' + esc(g.key) + '">照樣造句</button></div>' +
+    '</div>';
+}
+function openGrammarSheet(ja) {
+  gsheetJa = ja;
+  const ms = GRAMMAR.filter(g => g.det.test(ja));
+  ms.forEach(g => bumpNote(g, ja));
+  let h = '<div class="gsrc">' + esc(ja) + '</div>';
+  h += ms.length
+    ? ms.map(gcardHTML).join('')
+    : '<div class="gempty">這句沒有對到內建句型' + (hasKey() ? '，試試下面的 AI 解析。' : '。填入 API key 後可用 AI 解析任何句子。') + '</div>';
+  h += '<div class="gai-section">' +
+    (hasKey()
+      ? '<button class="setbtn" id="gaiBtn">AI 解析這句（' + esc((AI_MODELS[settings.aiModel] || AI_MODELS['claude-haiku-4-5']).label.split('（')[0]) + '）</button>'
+      : '<div class="gempty">想要整句拆解與更深的文法說明？到「設定」頁填入 Claude API key 即可解鎖 AI 解析與造句批改。</div>') +
+    '<div id="gaiOut"></div></div>';
+  gsheetBody.innerHTML = h;
+  gsheetBody.scrollTop = 0;
+  const aiBtn = document.getElementById('gaiBtn');
+  if (aiBtn) aiBtn.onclick = runAiAnalyze;
+  gsheetWrap.classList.remove('hidden');
+  if (phraseSub === 'grammar') renderPhrases();
+}
+async function runAiAnalyze() {
+  const out = document.getElementById('gaiOut');
+  const btn = document.getElementById('gaiBtn');
+  if (gsheetJa.length > 500) showToast('句子過長，僅解析前 500 字');
+  btn.disabled = true; btn.textContent = 'AI 解析中…';
+  try {
+    const r = await aiAnalyze(gsheetJa);
+    let h = '<div class="gcard"><div class="gname">整句拆解</div>' +
+      (r.breakdown || []).map(b => '<div class="gpart"><span class="gpart-ja">' + esc(b.part) + '</span><span class="gpart-note">' + esc(b.note) + '</span></div>').join('') +
+      '</div>';
+    for (const p of (r.points || [])) {
+      aiNote(p.name, p.explain, gsheetJa);
+      h += '<div class="gcard"><div class="gname">' + esc(p.name) + '</div>' +
+        '<div class="gzh">' + esc(p.explain) + '</div>' +
+        '<div class="gnuance">' + esc(p.usage) + '</div>' +
+        '<div style="margin-top:8px;"><button class="setbtn" data-aidrill="' + esc(p.name) + '" data-aiexplain="' + esc(p.explain) + '">照樣造句</button></div></div>';
+    }
+    if (r.nuance) h += '<div class="gcard"><div class="gname">語感備註</div><div class="gzh">' + esc(r.nuance) + '</div></div>';
+    out.innerHTML = h;
+    btn.classList.add('hidden');
+  } catch (e) {
+    out.innerHTML = '<div class="gempty">' + esc(e.message || 'AI 解析失敗') + '</div>';
+    btn.disabled = false; btn.textContent = '重試 AI 解析';
+  }
+}
+gsheetBody.addEventListener('click', ev => {
+  const d = ev.target.closest('[data-gdrill]');
+  if (d) { startDrill(d.dataset.gdrill); return; }
+  const a = ev.target.closest('[data-aidrill]');
+  if (a) { startAiDrill(a.dataset.aidrill, a.dataset.aiexplain || ''); }
+});
+
+/* ---------------- 照樣造句 ---------------- */
+function startDrill(key) {
+  const g = GRAMMAR.find(x => x.key === key);
+  if (!g) return;
+  const n = noteByKey(key);
+  const di = ((n && n.drills.length) || 0) % g.drills.length;   // 輪流出題
+  const d = g.drills[di];
+  openDrillModal({ title: g.name, patternKey: g.key, q: d.q, refA: d.a, refR: d.r });
+}
+async function startAiDrill(name, explain) {
+  if (!hasKey()) { showToast('AI 出題需要 API key（設定頁）'); return; }
+  showToast('AI 出題中…');
+  try {
+    const r = await aiMakeDrill(name, explain);
+    openDrillModal({ title: name, patternKey: 'ai:' + name, q: r.question, refA: r.reference, refR: r.romaji || '' });
+  } catch (e) { showToast(e.message || 'AI 出題失敗'); }
+}
+function openDrillModal(ctx) {
+  closeModal(null);                       // 先 resolve 掉可能還開著的 confirm，避免 promise 永久懸掛
+  modalResolve = null;
+  modal.innerHTML = '<h2>照樣造句：' + esc(ctx.title) + '</h2>' +
+    '<div class="gzh" style="margin-bottom:8px;">' + esc(ctx.q) + '</div>' +
+    '<textarea id="drillAns" rows="2" placeholder="用日文寫寫看…（也可先寫中文再按輔助翻譯）"></textarea>' +
+    '<div class="btns" style="justify-content:flex-start;flex-wrap:wrap;gap:6px;">' +
+    '<button class="cancel" id="drillZh">中→日輔助</button>' +
+    '<button class="cancel" id="drillRef">看參考解答</button>' +
+    '<button class="ok" id="drillSubmit">' + (hasKey() ? '交卷（AI 批改）' : '交卷（自我對照）') + '</button>' +
+    '<button class="cancel" id="drillClose">關閉</button>' +
+    '</div><div id="drillOut"></div>';
+  const ans = () => document.getElementById('drillAns').value.trim();
+  const out = document.getElementById('drillOut');
+  document.getElementById('drillClose').onclick = () => closeModal(null);
+  document.getElementById('drillZh').onclick = async () => {
+    const v = ans(); if (!v) { showToast('先寫點中文再按輔助'); return; }
+    try {
+      const r = await translate(v, 'zh2ja');
+      document.getElementById('drillAns').value = r.ja;
+      showToast('已翻成日文，建議照句型改寫一次再交卷');
+    } catch (e) { showToast(e.message); }
+  };
+  document.getElementById('drillRef').onclick = () => {
+    out.innerHTML = '<div class="gcard"><div class="gname">參考解答</div><div class="gex">' + esc(ctx.refA) +
+      (ctx.refR ? '<div class="romaji-line">' + esc(ctx.refR) + '</div>' : '') + '</div></div>';
+  };
+  document.getElementById('drillSubmit').onclick = async () => {
+    const v = ans(); if (!v) { showToast('先寫下你的答案'); return; }
+    const btn = document.getElementById('drillSubmit');
+    if (hasKey()) {
+      btn.disabled = true; btn.textContent = '批改中…';
+      try {
+        const r = await aiGrade(ctx.title, ctx.q, v);
+        out.innerHTML = '<div class="gcard">' +
+          '<div class="gname ' + (r.ok ? 'drill-ok' : 'drill-no') + '">' + (r.ok ? '✓ 正確！' : '✗ 再修一下') + '</div>' +
+          '<div class="gex"><span class="gtag">你的答案</span>' + esc(v) + '</div>' +
+          '<div class="gex"><span class="gtag">訂正版</span>' + esc(r.corrected) + '</div>' +
+          ((r.issues || []).length ? '<div class="gnuance">' + r.issues.map(esc).join('；') + '</div>' : '') +
+          '<div class="gzh">' + esc(r.comment) + '</div></div>';
+        recordDrill(ctx, v, r.ok, r.corrected);
+      } catch (e) { out.innerHTML = '<div class="gempty">' + esc(e.message || '批改失敗') + '</div>'; }
+      btn.disabled = false; btn.textContent = '交卷（AI 批改）';
+    } else {
+      out.innerHTML = '<div class="gcard"><div class="gname">自我對照</div>' +
+        '<div class="gex"><span class="gtag">你的答案</span>' + esc(v) + '</div>' +
+        '<div class="gex"><span class="gtag">參考解答</span>' + esc(ctx.refA) +
+        (ctx.refR ? '<div class="romaji-line">' + esc(ctx.refR) + '</div>' : '') + '</div>' +
+        '<div class="gnuance">自查：助詞對嗎？動詞變形對嗎？丁寧度合適嗎？</div></div>';
+      recordDrill(ctx, v, null, ctx.refA);
+    }
+  };
+  modalWrap.classList.add('show');
+}
+function recordDrill(ctx, answer, ok, corrected) {
+  let n = grammarNotes.find(x => x.patternKey === ctx.patternKey);
+  if (!n) {
+    const g = GRAMMAR.find(x => x.key === ctx.patternKey);
+    n = g ? bumpNote(g, g.pj) : aiNote(ctx.title, '', gsheetJa || '');
+  }
+  n.drills.push({ q: ctx.q, answer: answer, ok: ok, corrected: corrected, ts: Date.now() });
+  saveGrammar();
+  if (phraseSub === 'grammar') renderPhrases();
+}
+
+/* ---------------- 文法筆記清單（句庫第三子頁籤用） ---------------- */
+function grammarListHTML() {
+  if (!grammarNotes.length) {
+    return '<div class="empty">還沒有文法筆記。<br>在對話卡片按「文」開始解析，出現過的句型會自動累積在這裡。</div>';
+  }
+  const list = [...grammarNotes].sort((a, b) => (b.seenCount || 0) - (a.seenCount || 0));
+  return list.map(n => {
+    const okCount = n.drills.filter(d => d.ok === true).length;
+    return '<div class="pcard" data-gnote="' + esc(n.id) + '">' +
+      '<div class="gname">' + esc(n.name) + '</div>' +
+      (n.explain ? '<div class="gzh">' + esc(n.explain) + '</div>' : '') +
+      (n.srcJa ? '<div class="gnuance">出現於：' + esc(n.srcJa.slice(0, 40)) + '</div>' : '') +
+      '<div class="meta-line">你的對話出現 ' + (n.seenCount || 0) + ' 次 ・ 練習 ' + n.drills.length + ' 次' +
+      (okCount ? '（AI 判對 ' + okCount + ' 次）' : '') + '</div>' +
+      '<div class="actions">' +
+      '<button class="copybtn" data-gact="drill">練習</button>' +
+      '<button class="iconbtn" data-gact="del" title="刪除">🗑</button>' +
+      '</div></div>';
+  }).join('');
+}
+async function handleGrammarNoteAction(id, act) {
+  const n = grammarNotes.find(x => x.id === id);
+  if (!n) return;
+  if (act === 'drill') {
+    if (n.patternKey && n.patternKey.indexOf('ai:') === 0) startAiDrill(n.name, n.explain || '');
+    else startDrill(n.patternKey);
+    return;
+  }
+  if (act === 'del') {
+    if (!(await confirmUI('刪除這條文法筆記？', '刪除', true))) return;
+    grammarNotes = grammarNotes.filter(x => x.id !== id);
+    saveGrammar(); renderPhrases();
+  }
+}
+
+window.__flushGrammar = () => Store.set('njp.grammar', grammarNotes);
 
 /* ---------------- PWA：icon（canvas 生成 PNG）＋ manifest ＋ Service Worker ---------------- */
 function makeIconPNG(size) {

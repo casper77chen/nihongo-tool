@@ -1,5 +1,5 @@
 /* 日本語ツール Service Worker — network-first、失敗時回快取，讓離線也能開頁 */
-const CACHE = 'njp-v3';
+const CACHE = 'njp-v4';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])));

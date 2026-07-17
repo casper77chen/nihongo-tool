@@ -76,7 +76,8 @@ main{flex:1; overflow:hidden; position:relative;}
   padding:0 16px; min-height:44px; font-size:15px; font-weight:600; flex:1; max-width:160px;
 }
 .copybtn.copied{background:var(--ok-bg); color:var(--ok);}
-.actions .iconbtn{color:var(--fg2);}
+.actions .iconbtn{color:var(--fg2); font-size:20px;}
+.iconbtn svg{display:block;}
 .actions .iconbtn.star-on{color:var(--star);}
 .actions .iconbtn.playing{color:var(--accent);}
 .err-card{border-color:var(--danger);}
@@ -251,7 +252,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -365,6 +366,13 @@ function fmtTime(ts) {
   const d = new Date(ts);
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
 }
+
+/* ---------------- 統一動作 icon（SVG，20px） ---------------- */
+const I_PLAY = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><polygon points="7 4 20 12 7 20"/></svg>';
+const I_SLOW = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4.5 14c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"/><path d="M2.5 14h16.5"/><circle cx="20.3" cy="13" r="1.7"/><path d="M7.5 14v2.2M14 14v2.2"/></svg>';
+const I_EDIT = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 3 21l.5-4.5Z"/></svg>';
+const I_DEL = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></svg>';
+const I_GRAM = '<span style="font-size:17px;font-weight:600;line-height:1;">文</span>';
 
 /* ---------------- 自訂確認框 / 編輯框 ---------------- */
 const modalWrap = document.getElementById('modal-wrap');
@@ -721,12 +729,12 @@ function cardHTML(e, ctx) {
   const actions =
     '<div class="actions">' +
     '<button class="copybtn" data-act="copy">' + copyLabel + '</button>' +
-    '<button class="iconbtn" data-act="play" title="發音">▶︎</button>' +
-    '<button class="iconbtn" data-act="slow" title="慢速發音">🐢</button>' +
-    '<button class="iconbtn" data-act="grammar" title="文法">文</button>' +
+    '<button class="iconbtn" data-act="play" title="發音">' + I_PLAY + '</button>' +
+    '<button class="iconbtn" data-act="slow" title="慢速發音">' + I_SLOW + '</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">' + I_GRAM + '</button>' +
     '<button class="iconbtn' + starCls + '" data-act="star" title="加入最愛">' + star + '</button>' +
-    '<button class="iconbtn" data-act="edit" title="編輯">✎</button>' +
-    '<button class="iconbtn" data-act="del" title="刪除">🗑</button>' +
+    '<button class="iconbtn" data-act="edit" title="編輯">' + I_EDIT + '</button>' +
+    '<button class="iconbtn" data-act="del" title="刪除">' + I_DEL + '</button>' +
     '</div>';
   const side = e.dir === 'zh2ja' ? 'me' : 'them';
   return '<div class="msg ' + side + '" data-id="' + esc(e.id) + '" data-ctx="' + ctx + '">' +
@@ -964,11 +972,11 @@ function favCardHTML(f) {
     (tags ? '<div style="margin-top:6px;">' + tags + '</div>' : '') +
     '<div class="actions">' +
     '<button class="copybtn" data-act="copy">複製</button>' +
-    '<button class="iconbtn" data-act="play">▶︎</button>' +
-    '<button class="iconbtn" data-act="slow">🐢</button>' +
-    '<button class="iconbtn" data-act="grammar" title="文法">文</button>' +
-    '<button class="iconbtn" data-act="edit">✎</button>' +
-    '<button class="iconbtn" data-act="del">🗑</button>' +
+    '<button class="iconbtn" data-act="play">' + I_PLAY + '</button>' +
+    '<button class="iconbtn" data-act="slow">' + I_SLOW + '</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">' + I_GRAM + '</button>' +
+    '<button class="iconbtn" data-act="edit">' + I_EDIT + '</button>' +
+    '<button class="iconbtn" data-act="del">' + I_DEL + '</button>' +
     '</div>' +
     '<div class="meta-line">複製 ' + (Number(f.copyCount) || 0) + ' 次</div>' +
     '</div>';
@@ -986,9 +994,9 @@ function builtinCardHTML(it, id) {
     (settings.showKana ? '<div class="kana-line">' + esc(kana) + '</div>' : '') +
     '<div class="actions">' +
     '<button class="copybtn" data-act="copy">複製</button>' +
-    '<button class="iconbtn" data-act="play">▶︎</button>' +
-    '<button class="iconbtn" data-act="slow">🐢</button>' +
-    '<button class="iconbtn" data-act="grammar" title="文法">文</button>' +
+    '<button class="iconbtn" data-act="play">' + I_PLAY + '</button>' +
+    '<button class="iconbtn" data-act="slow">' + I_SLOW + '</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">' + I_GRAM + '</button>' +
     '<button class="iconbtn' + (isFav(id) ? ' star-on' : '') + '" data-act="star">' + star + '</button>' +
     '</div></div>';
 }
@@ -1843,7 +1851,7 @@ function grammarListHTML() {
       (okCount ? '（AI 判對 ' + okCount + ' 次）' : '') + '</div>' +
       '<div class="actions">' +
       '<button class="copybtn" data-gact="drill">練習</button>' +
-      '<button class="iconbtn" data-gact="del" title="刪除">🗑</button>' +
+      '<button class="iconbtn" data-gact="del" title="刪除">' + I_DEL + '</button>' +
       '</div></div>';
   }).join('');
 }

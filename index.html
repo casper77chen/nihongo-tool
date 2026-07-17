@@ -7,25 +7,28 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="日本語">
-<meta name="theme-color" content="#1a1d24">
+<meta name="theme-color" content="#f5f2ea">
 <title>日本語ツール — 日語溝通工具</title>
 <style>
 :root{
-  --bg:#f4f5f7; --card:#ffffff; --fg:#1b1e24; --fg2:#6b7280; --line:#e3e5ea;
-  --accent:#3b6ef5; --accent-fg:#ffffff; --bubble-me:#e2ebff; --bubble-them:#ffffff;
-  --danger:#d64545; --star:#e8a824; --tag:#eef1f6; --ok:#2f9e5f;
+  --bg:#f5f2ea; --card:#ffffff; --fg:#33302a; --fg2:#8b8477; --line:#e9e4d8;
+  --accent:#b3502a; --accent-fg:#ffffff; --bubble-me:#f6e9de; --bubble-them:#ffffff;
+  --danger:#c24a3a; --star:#d9962e; --tag:#efebe1; --ok:#3a7d44; --ok-bg:#e0ecdd; --accent-bg:#f2dfd2;
+  --shadow:0 1px 3px rgba(60,50,30,.06);
   --tabbar-h:56px; --composer-h:0px;
 }
 [data-theme="dark"]{
-  --bg:#14161b; --card:#1e222b; --fg:#e8eaef; --fg2:#9aa1ad; --line:#2c313c;
-  --accent:#5b85f7; --accent-fg:#ffffff; --bubble-me:#26344f; --bubble-them:#1e222b;
-  --danger:#e06565; --star:#e8b23e; --tag:#2a2f3a; --ok:#3fba74;
+  --bg:#211e19; --card:#2c2822; --fg:#ece6da; --fg2:#a59c8c; --line:#3c362c;
+  --accent:#d07a4e; --accent-fg:#241d16; --bubble-me:#3e2f24; --bubble-them:#2c2822;
+  --danger:#e07a63; --star:#e0a840; --tag:#38332a; --ok:#79b184; --ok-bg:#2f3b2d; --accent-bg:#453023;
+  --shadow:none;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#14161b; --card:#1e222b; --fg:#e8eaef; --fg2:#9aa1ad; --line:#2c313c;
-    --accent:#5b85f7; --accent-fg:#ffffff; --bubble-me:#26344f; --bubble-them:#1e222b;
-    --danger:#e06565; --star:#e8b23e; --tag:#2a2f3a; --ok:#3fba74;
+    --bg:#211e19; --card:#2c2822; --fg:#ece6da; --fg2:#a59c8c; --line:#3c362c;
+    --accent:#d07a4e; --accent-fg:#241d16; --bubble-me:#3e2f24; --bubble-them:#2c2822;
+    --danger:#e07a63; --star:#e0a840; --tag:#38332a; --ok:#79b184; --ok-bg:#2f3b2d; --accent-bg:#453023;
+    --shadow:none;
   }
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -38,23 +41,23 @@ body{
 }
 button{font-family:inherit; border:none; background:none; color:inherit; cursor:pointer; padding:0;}
 input,textarea,select{font-family:inherit; font-size:16px; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:10px;}
-h1{font-size:18px; margin:0;}
+h1{font-size:19px; margin:0; font-weight:700; color:var(--accent);}
 #warnbar{background:#b3760f; color:#fff; padding:6px 12px; font-size:13px; text-align:center;}
 main{flex:1; overflow:hidden; position:relative;}
 .tab{display:none; height:100%; flex-direction:column; overflow:hidden;}
 .tab.active{display:flex;}
-.tabhead{display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--card); flex-wrap:wrap;}
+.tabhead{display:flex; align-items:center; gap:8px; padding:12px 14px 10px; border-bottom:1px solid var(--line); background:var(--bg); flex-wrap:wrap;}
 .tabhead .sp{flex:1;}
 .scroll{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; padding-bottom:16px;}
 .pill{border:1px solid var(--line); background:var(--card); border-radius:999px; padding:6px 12px; font-size:14px; min-height:36px;}
-.pill.on{background:var(--accent); color:var(--accent-fg); border-color:var(--accent);}
+.pill.on{background:var(--accent-bg); color:var(--accent); border-color:transparent; font-weight:600;}
 .iconbtn{min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:18px; border-radius:10px;}
 /* ---- 卡片 ---- */
 .msg{display:flex; margin-bottom:10px;}
 .msg.me{justify-content:flex-end;}
 .card{
-  background:var(--bubble-them); border:1px solid var(--line); border-radius:14px;
-  padding:10px 12px; max-width:92%; min-width:60%;
+  background:var(--bubble-them); border:1px solid var(--line); border-radius:16px;
+  padding:12px 14px; max-width:92%; min-width:60%; box-shadow:var(--shadow);
 }
 .msg.me .card{background:var(--bubble-me);}
 .src-line{font-size:13px; color:var(--fg2); margin-bottom:2px; word-break:break-word;}
@@ -71,7 +74,7 @@ main{flex:1; overflow:hidden; position:relative;}
   background:var(--accent); color:var(--accent-fg); border-radius:10px;
   padding:0 16px; min-height:44px; font-size:15px; font-weight:600; flex:1; max-width:160px;
 }
-.copybtn.copied{background:var(--ok);}
+.copybtn.copied{background:var(--ok-bg); color:var(--ok);}
 .actions .iconbtn{color:var(--fg2);}
 .actions .iconbtn.star-on{color:var(--star);}
 .actions .iconbtn.playing{color:var(--accent);}
@@ -92,14 +95,13 @@ main{flex:1; overflow:hidden; position:relative;}
   padding-bottom:env(safe-area-inset-bottom,0px);
 }
 #tabbar button{
-  flex:1; min-height:var(--tabbar-h); font-size:12px; color:var(--fg2);
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  flex:1; min-height:var(--tabbar-h); font-size:15px; color:var(--fg2);
+  display:flex; align-items:center; justify-content:center;
 }
-#tabbar button .ico{font-size:20px;}
-#tabbar button.on{color:var(--accent); font-weight:600;}
+#tabbar button.on{color:var(--accent); font-weight:700;}
 /* ---- 句庫 ---- */
 .subtabs{display:flex; gap:8px; padding:10px 12px 0;}
-.pcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 12px; margin-bottom:10px;}
+.pcard{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px 14px; margin-bottom:10px; box-shadow:var(--shadow);}
 .tagchip{display:inline-block; background:var(--tag); border-radius:999px; padding:2px 10px; font-size:12px; color:var(--fg2); margin-right:4px;}
 .tagfilter{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
 .tagfilter .pill{min-height:32px; padding:3px 12px;}
@@ -114,7 +116,7 @@ main{flex:1; overflow:hidden; position:relative;}
 .date-head{font-size:13px; color:var(--fg2); font-weight:600; margin:14px 4px 8px;}
 #hsearch{width:100%; padding:10px 12px; min-height:44px; margin-bottom:4px;}
 /* ---- 設定 ---- */
-.set-group{background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:14px; overflow:hidden;}
+.set-group{background:var(--card); border:1px solid var(--line); border-radius:16px; margin-bottom:14px; overflow:hidden; box-shadow:var(--shadow);}
 .set-row{display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--line); min-height:52px; flex-wrap:wrap;}
 .set-row:last-child{border-bottom:none;}
 .set-row label{flex:1; font-size:15px;}
@@ -204,10 +206,10 @@ main{flex:1; overflow:hidden; position:relative;}
 </div>
 
 <nav id="tabbar">
-  <button data-tab="chat" class="on"><span class="ico">💬</span>對話</button>
-  <button data-tab="phrases"><span class="ico">📚</span>句庫</button>
-  <button data-tab="history"><span class="ico">🕘</span>歷史</button>
-  <button data-tab="settings"><span class="ico">⚙️</span>設定</button>
+  <button data-tab="chat" class="on">對話</button>
+  <button data-tab="phrases">句庫</button>
+  <button data-tab="history">歷史</button>
+  <button data-tab="settings">設定</button>
 </nav>
 
 <div id="modal-wrap"><div id="modal"></div></div>
@@ -219,7 +221,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -1235,7 +1237,7 @@ function makeIconPNG(size) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d');
-  g.fillStyle = '#3b6ef5';
+  g.fillStyle = '#b3502a';
   g.fillRect(0, 0, size, size);
   g.fillStyle = '#ffffff';
   g.font = 'bold ' + Math.round(size * 0.54) + 'px sans-serif';
@@ -1253,7 +1255,7 @@ function makeIconPNG(size) {
     const manifest = {
       name: '日本語ツール', short_name: '日本語',
       start_url: location.href.split('#')[0], scope: './',
-      display: 'standalone', background_color: '#14161b', theme_color: '#1a1d24',
+      display: 'standalone', background_color: '#f5f2ea', theme_color: '#f5f2ea',
       icons: [
         { src: makeIconPNG(192), sizes: '192x192', type: 'image/png' },
         { src: makeIconPNG(512), sizes: '512x512', type: 'image/png' }

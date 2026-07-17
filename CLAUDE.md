@@ -2,6 +2,10 @@
 
 個人日語溝通工具（單檔 HTML＋sw.js），規格正本：`../日語學習工具規劃書.md`。
 
+- 正式網址：https://nihongo.casper77chen.com（GoDaddy CNAME `nihongo` → nihongo-casper.zeabur.app）
+- 備用網址：https://nihongo-casper.zeabur.app
+- 已作為案例卡放進兩版 AI 課程的 Lesson 2（互動工具實例）與 Lesson 3（localStorage 對比案例）
+
 ## Zeabur Deployment
 - Project ID: 6a59715c725eab1a1db81ce6（nihongo-tool，Side_Project_A 伺服器）
 - Service ID: 6a597182d549337cfa26afc2

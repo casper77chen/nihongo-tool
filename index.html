@@ -221,7 +221,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -867,7 +867,16 @@ else {
       input.dispatchEvent(new Event('input'));
     };
     rec.onend = () => { recActive = false; micbtn.classList.remove('rec'); };
-    rec.onerror = () => { recActive = false; micbtn.classList.remove('rec'); showToast('語音辨識失敗或未授權麥克風'); };
+    rec.onerror = ev => {
+      recActive = false; micbtn.classList.remove('rec');
+      const code = ev && ev.error;
+      if (code === 'not-allowed' || code === 'service-not-allowed')
+        showToast('麥克風未授權：此瀏覽器不支援時請改用 Safari，或改用鍵盤上的 🎤 聽寫');
+      else if (code === 'no-speech') showToast('沒聽到聲音，請再按一次重試');
+      else if (code === 'network') showToast('語音辨識需要網路連線');
+      else if (code === 'audio-capture') showToast('找不到可用的麥克風');
+      else showToast('語音輸入失敗——可改用 iOS 鍵盤右下角的 🎤 聽寫輸入');
+    };
     try { rec.start(); recActive = true; micbtn.classList.add('rec'); showToast(rec.lang === 'ja-JP' ? '請說日語…' : '請說中文…'); }
     catch (e) { showToast('無法啟動語音輸入'); }
   });

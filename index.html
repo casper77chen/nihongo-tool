@@ -70,13 +70,14 @@ main{flex:1; overflow:hidden; position:relative;}
 .note-line{font-size:11px; color:var(--fg2); margin-top:4px;}
 .collapsible.collapsed .ja-line{display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;}
 .expand-btn{font-size:13px; color:var(--accent); margin-top:2px; min-height:32px;}
-.actions{display:flex; gap:4px; margin-top:8px; align-items:center; flex-wrap:wrap;}
+.actions{display:flex; gap:2px; margin-top:8px; align-items:center; flex-wrap:nowrap; justify-content:space-between;}
 .copybtn{
   background:var(--accent); color:var(--accent-fg); border-radius:10px;
-  padding:0 16px; min-height:44px; font-size:15px; font-weight:600; flex:1; max-width:160px;
+  padding:0 10px; min-height:44px; font-size:15px; font-weight:600;
+  flex:1 1 auto; min-width:0; max-width:160px; white-space:nowrap;
 }
 .copybtn.copied{background:var(--ok-bg); color:var(--ok);}
-.actions .iconbtn{color:var(--fg2); font-size:20px;}
+.actions .iconbtn{color:var(--fg2); font-size:20px; min-width:34px; flex:0 0 auto;}
 .iconbtn svg{display:block;}
 .actions .iconbtn.star-on{color:var(--star);}
 .actions .iconbtn.playing{color:var(--accent);}
@@ -252,7 +253,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {

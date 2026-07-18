@@ -115,6 +115,17 @@ main{flex:1; overflow:hidden; position:relative;}
 .addrow{display:flex; gap:6px; margin-bottom:12px;}
 .addrow input{flex:1; padding:10px 12px; min-height:44px;}
 .addrow button{background:var(--accent); color:var(--accent-fg); border-radius:10px; min-width:64px; min-height:44px; font-weight:600;}
+/* ---- 情境 ---- */
+#sceneTabs{overflow-x:auto; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+#sceneTabs::-webkit-scrollbar{display:none;}
+#sceneTabs .pill{white-space:nowrap; flex:0 0 auto;}
+.scene-sec{font-size:13px; font-weight:700; color:var(--fg2); margin:14px 4px 8px;}
+.wordgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px;}
+.wcard{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px 10px; box-shadow:var(--shadow); cursor:pointer; text-align:left;}
+.wcard.playing{border-color:var(--accent);}
+.wcard .wja{font-weight:700; font-size:15px; word-break:break-word;}
+.wcard .wr{font-size:11px; color:var(--fg2);}
+.wcard .wzh{font-size:13px; margin-top:2px; color:var(--fg2);}
 /* ---- 歷史 ---- */
 .date-head{font-size:13px; color:var(--fg2); font-weight:600; margin:14px 4px 8px;}
 #hsearch{width:100%; padding:10px 12px; min-height:44px; margin-bottom:4px;}
@@ -199,6 +210,16 @@ main{flex:1; overflow:hidden; position:relative;}
     </div>
     <div class="scroll" id="phraseArea"></div>
   </section>
+  <!-- 情境 -->
+  <section id="tab-scenes" class="tab">
+    <div class="tabhead">
+      <h1>情境</h1>
+      <div class="sp"></div>
+      <span style="font-size:12px;color:var(--fg2);">對話為丁寧體</span>
+    </div>
+    <div class="subtabs" id="sceneTabs"></div>
+    <div class="scroll" id="sceneArea"></div>
+  </section>
   <!-- 歷史 -->
   <section id="tab-history" class="tab">
     <div class="tabhead">
@@ -233,6 +254,7 @@ main{flex:1; overflow:hidden; position:relative;}
 <nav id="tabbar">
   <button data-tab="chat" class="on">對話</button>
   <button data-tab="phrases">句庫</button>
+  <button data-tab="scenes">情境</button>
   <button data-tab="history">歷史</button>
   <button data-tab="settings">設定</button>
 </nav>
@@ -253,7 +275,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.2.2';
+const VERSION = '1.4.1';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -283,7 +305,7 @@ const Store = (() => {
 })();
 
 /* ---------------- 狀態 ---------------- */
-const DEFAULT_SETTINGS = { voiceURI: '', slowRate: 0.6, showKana: true, theme: 'system', defaultRegister: 'polite', apiKey: '', aiModel: 'claude-haiku-4-5', aiUsage: null };
+const DEFAULT_SETTINGS = { voiceURI: '', slowRate: 0.6, showKana: true, theme: 'system', defaultRegister: 'polite', apiKey: '', aiModel: 'claude-haiku-4-5', aiUsage: null, syncKey: '', lastSyncAt: 0 };
 /* 資料清洗：localStorage 與匯入的 JSON 都是外部輸入，欄位一律強制型別 */
 const S_ = v => typeof v === 'string' ? v : '';
 function sanHist(h) {
@@ -296,6 +318,18 @@ function sanFav(f) {
     jaCasual: S_(f.jaCasual), romajiCasual: S_(f.romajiCasual),
     tags: Array.isArray(f.tags) ? f.tags.filter(t => typeof t === 'string') : [],
     copyCount: Number(f.copyCount) || 0, lastUsed: Number(f.lastUsed) || 0, ts: Number(f.ts) || Date.now() };
+}
+function sanScenePhrase(p) {
+  return { id: S_(p.id), zh: S_(p.zh), ja: S_(p.ja), r: S_(p.r), kana: S_(p.kana), ts: Number(p.ts) || Date.now() };
+}
+function sanScenePhrases(raw) {
+  const out = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const k of Object.keys(raw)) {
+      if (Array.isArray(raw[k])) out[k] = raw[k].filter(p => p && p.id).map(sanScenePhrase);
+    }
+  }
+  return out;
 }
 function sanGrammarNote(n) {
   return { id: S_(n.id), patternKey: S_(n.patternKey), name: S_(n.name), explain: S_(n.explain),
@@ -311,16 +345,20 @@ function sanSettings(s) {
   if (!['polite', 'casual'].includes(s.defaultRegister)) s.defaultRegister = 'polite';
   s.voiceURI = S_(s.voiceURI);
   s.apiKey = S_(s.apiKey);
+  s.syncKey = S_(s.syncKey);
+  s.lastSyncAt = Number(s.lastSyncAt) || 0;
   if (!['claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-8'].includes(s.aiModel)) s.aiModel = 'claude-haiku-4-5';
   if (!s.aiUsage || typeof s.aiUsage !== 'object') s.aiUsage = null;
   return s;
 }
 let history = Store.get('njp.history', []).filter(h => h && h.id).map(sanHist);
 let favorites = Store.get('njp.favorites', []).filter(f => f && f.id).map(sanFav);
+let scenePhrases = sanScenePhrases(Store.get('njp.scenePhrases', {}));   // 情境自訂句：{ 情境名: [句子] }
 let settings = sanSettings(Object.assign({}, DEFAULT_SETTINGS, Store.get('njp.settings', {})));
 let register = settings.defaultRegister;          // 'polite' | 'casual'
 let dirMode = 'auto';                             // 'auto' | 'zh2ja' | 'ja2zh'
 let phraseSub = 'fav';                            // 'fav' | 'builtin'
+let sceneSub = 0;                                 // 情境分頁目前選中的索引
 let favTagFilter = '';
 let openCats = {};
 
@@ -335,13 +373,15 @@ function esc(s) {
 function debounce(fn, ms) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
-const saveHistory = debounce(() => Store.set('njp.history', history), 300);
-const saveFavorites = debounce(() => Store.set('njp.favorites', favorites), 300);
+const saveHistory = debounce(() => { Store.set('njp.history', history); scheduleSync(); }, 300);
+const saveFavorites = debounce(() => { Store.set('njp.favorites', favorites); scheduleSync(); }, 300);
 const saveSettings = debounce(() => Store.set('njp.settings', settings), 300);
+const saveScenePhrases = debounce(() => { Store.set('njp.scenePhrases', scenePhrases); scheduleSync(); }, 300);
 function flushAll() {
   Store.set('njp.history', history);
   Store.set('njp.favorites', favorites);
   Store.set('njp.settings', settings);
+  Store.set('njp.scenePhrases', scenePhrases);
   if (window.__flushGrammar) window.__flushGrammar();
 }
 window.addEventListener('pagehide', flushAll);
@@ -577,6 +617,7 @@ if ('speechSynthesis' in window) {
   loadVoices();
 }
 function pickVoice() {
+  if (!jaVoices.length) loadVoices();               // 桌面 Chrome 語音清單載入慢，用到時再抓一次
   if (settings.voiceURI) {
     const v = jaVoices.find(v => v.voiceURI === settings.voiceURI);
     if (v) return v;
@@ -584,23 +625,41 @@ function pickVoice() {
   const male = jaVoices.find(v => /otoya|ichiro|keita|daichi|hattori|male/i.test(v.name + ' ' + v.voiceURI));
   return male || jaVoices[0] || null;
 }
+let currentUtterance = null;                        // 防止 Chrome 把播放中的 utterance 回收
+let _speakTimer = null;                             // cancel→speak 的延遲
+let _keepAlive = null;                              // Chrome 網路語音 ~15 秒暫停的保活
 function stopSpeak() {
+  clearTimeout(_speakTimer);
+  clearInterval(_keepAlive);
+  currentUtterance = null;
   try { speechSynthesis.cancel(); } catch (e) {}
   if (speakingBtn) { speakingBtn.classList.remove('playing'); speakingBtn = null; }
 }
 function speak(text, slow, btn) {
   if (!('speechSynthesis' in window)) { showToast('此裝置不支援語音朗讀'); return; }
-  if (speakingBtn === btn && speechSynthesis.speaking) { stopSpeak(); return; }
+  if (speakingBtn === btn && (speechSynthesis.speaking || _speakTimer)) { stopSpeak(); return; }
   stopSpeak();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'ja-JP';
   const v = pickVoice();
   if (v) u.voice = v;
+  else if (!jaVoices.length) showToast('找不到日語語音，將用系統預設聲音');
   u.rate = slow ? settings.slowRate : 1.0;
   u.onend = u.onerror = () => { if (speakingBtn === btn) stopSpeak(); };
   speakingBtn = btn;
   if (btn) btn.classList.add('playing');
-  speechSynthesis.speak(u);
+  currentUtterance = u;
+  // 桌面 Chrome：cancel 後立刻 speak 會整句靜音，且引擎可能卡在 paused——延遲一拍並先 resume
+  _speakTimer = setTimeout(() => {
+    _speakTimer = null;
+    try { speechSynthesis.resume(); } catch (e) {}
+    speechSynthesis.speak(u);
+    clearInterval(_keepAlive);
+    _keepAlive = setInterval(() => {                // Chrome 網路語音播 ~15 秒會自動暫停，定期喚醒
+      if (!speechSynthesis.speaking) { clearInterval(_keepAlive); return; }
+      try { speechSynthesis.resume(); } catch (e) {}
+    }, 10000);
+  }, 60);
 }
 
 /* ---------------- 複製 ---------------- */
@@ -696,6 +755,185 @@ const BUILTIN = [
   { zh:'有機會一起吃個飯吧', ja:'機会があれば、ぜひお食事でもご一緒しましょう。', r:'Kikai ga areba, zehi oshokuji demo go-issho shimashō.', jc:'今度ご飯行こうよ！', rc:'Kondo gohan ikō yo!' },
   { zh:'祝旅途愉快', ja:'よいご旅行を！', r:'Yoi goryokō o!', jc:'楽しんできてね！', rc:'Tanoshinde kite ne!' },
   { zh:'今後也請多多關照', ja:'これからもどうぞよろしくお願いします。', r:'Korekara mo dōzo yoroshiku onegai shimasu.', jc:'これからもよろしくね！', rc:'Korekara mo yoroshiku ne!' }
+]}
+];
+
+/* ---------------- 情境庫（手寫；對話固定丁寧體） ---------------- */
+/* words: zh, ja, r ／ phrases: zh, ja, r */
+const SCENES = [
+{ cat: '交通', words: [
+  { zh:'車站', ja:'駅', r:'eki' },
+  { zh:'電車', ja:'電車', r:'densha' },
+  { zh:'新幹線', ja:'新幹線', r:'shinkansen' },
+  { zh:'地鐵', ja:'地下鉄', r:'chikatetsu' },
+  { zh:'公車', ja:'バス', r:'basu' },
+  { zh:'計程車', ja:'タクシー', r:'takushī' },
+  { zh:'車票', ja:'切符', r:'kippu' },
+  { zh:'單程', ja:'片道', r:'katamichi' },
+  { zh:'來回', ja:'往復', r:'ōfuku' },
+  { zh:'剪票口', ja:'改札口', r:'kaisatsuguchi' },
+  { zh:'月台', ja:'ホーム', r:'hōmu' },
+  { zh:'轉乘', ja:'乗り換え', r:'norikae' },
+  { zh:'末班車', ja:'終電', r:'shūden' },
+  { zh:'車資', ja:'運賃', r:'unchin' }
+], phrases: [
+  { zh:'這班電車有到新宿嗎？', ja:'この電車は新宿に行きますか？', r:'Kono densha wa Shinjuku ni ikimasu ka?' },
+  { zh:'請給我一張到大阪的票', ja:'大阪までの切符を一枚ください。', r:'Ōsaka made no kippu o ichimai kudasai.' },
+  { zh:'要在哪裡轉車？', ja:'どこで乗り換えればいいですか？', r:'Doko de norikaereba ii desu ka?' },
+  { zh:'下一班車是幾點？', ja:'次の電車は何時ですか？', r:'Tsugi no densha wa nanji desu ka?' },
+  { zh:'末班車是幾點？', ja:'終電は何時ですか？', r:'Shūden wa nanji desu ka?' },
+  { zh:'到東京車站要多久？', ja:'東京駅までどのくらいかかりますか？', r:'Tōkyō-eki made dono kurai kakarimasu ka?' },
+  { zh:'（計程車）麻煩到這個地址', ja:'この住所までお願いします。', r:'Kono jūsho made onegai shimasu.' },
+  { zh:'請在這裡停車', ja:'ここで止めてください。', r:'Koko de tomete kudasai.' },
+  { zh:'這個位子有人坐嗎？', ja:'この席、空いていますか？', r:'Kono seki, aite imasu ka?' },
+  { zh:'我坐過站了', ja:'乗り過ごしてしまいました。', r:'Norisugoshite shimaimashita.' }
+]},
+{ cat: '點餐', words: [
+  { zh:'菜單', ja:'メニュー', r:'menyū' },
+  { zh:'點餐', ja:'注文', r:'chūmon' },
+  { zh:'推薦', ja:'おすすめ', r:'osusume' },
+  { zh:'水', ja:'お水', r:'omizu' },
+  { zh:'茶', ja:'お茶', r:'ocha' },
+  { zh:'生啤酒', ja:'生ビール', r:'nama bīru' },
+  { zh:'套餐', ja:'定食', r:'teishoku' },
+  { zh:'大碗', ja:'大盛り', r:'ōmori' },
+  { zh:'內用', ja:'店内', r:'tennai' },
+  { zh:'外帶', ja:'持ち帰り', r:'mochikaeri' },
+  { zh:'買單', ja:'お会計', r:'okaikei' },
+  { zh:'收據', ja:'領収書', r:'ryōshūsho' },
+  { zh:'辣', ja:'辛い', r:'karai' },
+  { zh:'過敏', ja:'アレルギー', r:'arerugī' }
+], phrases: [
+  { zh:'請給我菜單', ja:'メニューをお願いします。', r:'Menyū o onegai shimasu.' },
+  { zh:'不好意思，我要點餐', ja:'すみません、注文をお願いします。', r:'Sumimasen, chūmon o onegai shimasu.' },
+  { zh:'請給我這個和這個', ja:'これとこれをください。', r:'Kore to kore o kudasai.' },
+  { zh:'請給我兩杯生啤酒', ja:'生ビールを二つください。', r:'Nama bīru o futatsu kudasai.' },
+  { zh:'有不辣的餐點嗎？', ja:'辛くない料理はありますか？', r:'Karakunai ryōri wa arimasu ka?' },
+  { zh:'我對蝦子過敏', ja:'エビアレルギーがあります。', r:'Ebi arerugī ga arimasu.' },
+  { zh:'內用', ja:'店内で食べます。', r:'Tennai de tabemasu.' },
+  { zh:'外帶，麻煩了', ja:'持ち帰りでお願いします。', r:'Mochikaeri de onegai shimasu.' },
+  { zh:'請再給我一杯水', ja:'お水をもう一杯ください。', r:'Omizu o mō ippai kudasai.' },
+  { zh:'麻煩分開結帳', ja:'お会計は別々にお願いします。', r:'Okaikei wa betsubetsu ni onegai shimasu.' },
+  { zh:'請給我收據', ja:'領収書をお願いします。', r:'Ryōshūsho o onegai shimasu.' }
+]},
+{ cat: '牙科', words: [
+  { zh:'蛀牙', ja:'虫歯', r:'mushiba' },
+  { zh:'牙齦', ja:'歯茎', r:'haguki' },
+  { zh:'智齒', ja:'親知らず', r:'oyashirazu' },
+  { zh:'麻醉', ja:'麻酔', r:'masui' },
+  { zh:'拔牙', ja:'抜歯', r:'basshi' },
+  { zh:'補牙（填充物）', ja:'詰め物', r:'tsumemono' },
+  { zh:'牙套（假牙冠）', ja:'被せ物', r:'kabusemono' },
+  { zh:'牙結石', ja:'歯石', r:'shiseki' },
+  { zh:'牙周病', ja:'歯周病', r:'shishūbyō' },
+  { zh:'X光', ja:'レントゲン', r:'rentogen' },
+  { zh:'根管治療', ja:'根管治療', r:'konkan chiryō' },
+  { zh:'植牙', ja:'インプラント', r:'inpuranto' },
+  { zh:'活動假牙', ja:'入れ歯', r:'ireba' },
+  { zh:'敏感性牙齒', ja:'知覚過敏', r:'chikaku kabin' },
+  { zh:'咬合', ja:'噛み合わせ', r:'kamiawase' }
+], phrases: [
+  { zh:'今天哪裡不舒服呢？', ja:'今日はどうされましたか？', r:'Kyō wa dō saremashita ka?' },
+  { zh:'哪一顆牙會痛？', ja:'どの歯が痛みますか？', r:'Dono ha ga itamimasu ka?' },
+  { zh:'請把嘴巴張大', ja:'お口を大きく開けてください。', r:'Okuchi o ōkiku akete kudasai.' },
+  { zh:'請輕輕咬合看看', ja:'軽く噛んでみてください。', r:'Karuku kande mite kudasai.' },
+  { zh:'先照一張X光喔', ja:'レントゲンを撮りますね。', r:'Rentogen o torimasu ne.' },
+  { zh:'會痛的話請舉手', ja:'痛かったら手を挙げてください。', r:'Itakattara te o agete kudasai.' },
+  { zh:'現在要打麻醉，會刺一下喔', ja:'これから麻酔をします。少しチクッとしますよ。', r:'Korekara masui o shimasu. Sukoshi chikutto shimasu yo.' },
+  { zh:'有蛀牙，需要治療', ja:'虫歯があるので、治療が必要です。', r:'Mushiba ga aru node, chiryō ga hitsuyō desu.' },
+  { zh:'請漱口', ja:'うがいをしてください。', r:'Ugai o shite kudasai.' },
+  { zh:'麻醉大約兩三個小時後會退，退之前請先不要吃東西', ja:'麻酔は2、3時間で切れます。それまでお食事は控えてください。', r:'Masui wa ni-san jikan de kiremasu. Sore made oshokuji wa hikaete kudasai.' },
+  { zh:'今天的治療到這裡結束', ja:'今日の治療はここまでです。', r:'Kyō no chiryō wa koko made desu.' },
+  { zh:'一週後請再回診', ja:'一週間後にまたいらしてください。', r:'Isshūkan-go ni mata irashite kudasai.' }
+]},
+{ cat: '問路', words: [
+  { zh:'右', ja:'右', r:'migi' },
+  { zh:'左', ja:'左', r:'hidari' },
+  { zh:'直走', ja:'まっすぐ', r:'massugu' },
+  { zh:'十字路口', ja:'交差点', r:'kōsaten' },
+  { zh:'紅綠燈', ja:'信号', r:'shingō' },
+  { zh:'轉角', ja:'角', r:'kado' },
+  { zh:'路的盡頭', ja:'突き当たり', r:'tsukiatari' },
+  { zh:'附近', ja:'近く', r:'chikaku' },
+  { zh:'地圖', ja:'地図', r:'chizu' },
+  { zh:'便利商店', ja:'コンビニ', r:'konbini' },
+  { zh:'派出所', ja:'交番', r:'kōban' },
+  { zh:'出口', ja:'出口', r:'deguchi' }
+], phrases: [
+  { zh:'不好意思，想請問一下', ja:'すみません、ちょっとお聞きしたいのですが。', r:'Sumimasen, chotto okiki shitai no desu ga.' },
+  { zh:'車站要怎麼走？', ja:'駅へはどう行けばいいですか？', r:'Eki e wa dō ikeba ii desu ka?' },
+  { zh:'這附近有便利商店嗎？', ja:'この近くにコンビニはありますか？', r:'Kono chikaku ni konbini wa arimasu ka?' },
+  { zh:'走路到得了嗎？', ja:'歩いて行けますか？', r:'Aruite ikemasu ka?' },
+  { zh:'走路大概要幾分鐘？', ja:'歩いて何分ぐらいですか？', r:'Aruite nanpun gurai desu ka?' },
+  { zh:'我迷路了', ja:'道に迷ってしまいました。', r:'Michi ni mayotte shimaimashita.' },
+  { zh:'可以在這張地圖上指給我看嗎？', ja:'この地図で教えていただけますか？', r:'Kono chizu de oshiete itadakemasu ka?' },
+  { zh:'這裡是哪裡？', ja:'ここはどこですか？', r:'Koko wa doko desu ka?' },
+  { zh:'（對方指路）在第二個紅綠燈右轉', ja:'二つ目の信号を右に曲がってください。', r:'Futatsume no shingō o migi ni magatte kudasai.' },
+  { zh:'（對方指路）就在路的盡頭', ja:'突き当たりにあります。', r:'Tsukiatari ni arimasu.' }
+]},
+{ cat: '日期時間', words: [
+  { zh:'今天', ja:'今日', r:'kyō' },
+  { zh:'明天', ja:'明日', r:'ashita' },
+  { zh:'昨天', ja:'昨日', r:'kinō' },
+  { zh:'後天', ja:'明後日', r:'asatte' },
+  { zh:'這週', ja:'今週', r:'konshū' },
+  { zh:'下週', ja:'来週', r:'raishū' },
+  { zh:'這個月', ja:'今月', r:'kongetsu' },
+  { zh:'下個月', ja:'来月', r:'raigetsu' },
+  { zh:'上午', ja:'午前', r:'gozen' },
+  { zh:'下午', ja:'午後', r:'gogo' },
+  { zh:'九點', ja:'9時', r:'kuji' },
+  { zh:'九點半', ja:'9時半', r:'kuji-han' },
+  { zh:'星期一', ja:'月曜日', r:'getsuyōbi' },
+  { zh:'星期二', ja:'火曜日', r:'kayōbi' },
+  { zh:'星期三', ja:'水曜日', r:'suiyōbi' },
+  { zh:'星期四', ja:'木曜日', r:'mokuyōbi' },
+  { zh:'星期五', ja:'金曜日', r:'kin\'yōbi' },
+  { zh:'星期六', ja:'土曜日', r:'doyōbi' },
+  { zh:'星期日', ja:'日曜日', r:'nichiyōbi' },
+  { zh:'週末', ja:'週末', r:'shūmatsu' },
+  { zh:'國定假日', ja:'祝日', r:'shukujitsu' }
+], phrases: [
+  { zh:'今天是幾月幾號？', ja:'今日は何月何日ですか？', r:'Kyō wa nangatsu nannichi desu ka?' },
+  { zh:'今天星期幾？', ja:'今日は何曜日ですか？', r:'Kyō wa nan\'yōbi desu ka?' },
+  { zh:'現在幾點？', ja:'今、何時ですか？', r:'Ima, nanji desu ka?' },
+  { zh:'約明天下午三點可以嗎？', ja:'明日の午後3時でよろしいですか？', r:'Ashita no gogo sanji de yoroshii desu ka?' },
+  { zh:'那就約下週五', ja:'では、来週の金曜日にお願いします。', r:'Dewa, raishū no kin\'yōbi ni onegai shimasu.' },
+  { zh:'大概需要多久時間？', ja:'どのくらい時間がかかりますか？', r:'Dono kurai jikan ga kakarimasu ka?' },
+  { zh:'從早上十點開始', ja:'午前10時からです。', r:'Gozen jūji kara desu.' },
+  { zh:'營業到晚上八點', ja:'夜8時までです。', r:'Yoru hachiji made desu.' },
+  { zh:'星期五之前麻煩您', ja:'金曜日までにお願いします。', r:'Kin\'yōbi made ni onegai shimasu.' }
+]},
+{ cat: '購物', words: [
+  { zh:'多少錢', ja:'いくら', r:'ikura' },
+  { zh:'價格', ja:'値段', r:'nedan' },
+  { zh:'便宜', ja:'安い', r:'yasui' },
+  { zh:'貴', ja:'高い', r:'takai' },
+  { zh:'折扣', ja:'割引', r:'waribiki' },
+  { zh:'免稅', ja:'免税', r:'menzei' },
+  { zh:'收銀台', ja:'レジ', r:'reji' },
+  { zh:'袋子', ja:'袋', r:'fukuro' },
+  { zh:'尺寸', ja:'サイズ', r:'saizu' },
+  { zh:'試穿', ja:'試着', r:'shichaku' },
+  { zh:'不同顏色', ja:'色違い', r:'irochigai' },
+  { zh:'庫存', ja:'在庫', r:'zaiko' },
+  { zh:'現金', ja:'現金', r:'genkin' },
+  { zh:'信用卡', ja:'クレジットカード', r:'kurejitto kādo' },
+  { zh:'伴手禮', ja:'お土産', r:'omiyage' },
+  { zh:'退貨', ja:'返品', r:'henpin' }
+], phrases: [
+  { zh:'這個多少錢？', ja:'これはいくらですか？', r:'Kore wa ikura desu ka?' },
+  { zh:'我只是看看', ja:'見ているだけです。', r:'Mite iru dake desu.' },
+  { zh:'可以試穿嗎？', ja:'試着してもいいですか？', r:'Shichaku shite mo ii desu ka?' },
+  { zh:'有大一點的尺寸嗎？', ja:'もう少し大きいサイズはありますか？', r:'Mō sukoshi ōkii saizu wa arimasu ka?' },
+  { zh:'有別的顏色嗎？', ja:'色違いはありますか？', r:'Irochigai wa arimasu ka?' },
+  { zh:'還有庫存嗎？', ja:'在庫はありますか？', r:'Zaiko wa arimasu ka?' },
+  { zh:'我要這個', ja:'これにします。', r:'Kore ni shimasu.' },
+  { zh:'可以免稅嗎？', ja:'免税できますか？', r:'Menzei dekimasu ka?' },
+  { zh:'可以刷卡嗎？', ja:'カードで支払えますか？', r:'Kādo de shiharaemasu ka?' },
+  { zh:'請給我袋子', ja:'袋をお願いします。', r:'Fukuro o onegai shimasu.' },
+  { zh:'可以幫我包裝成禮物嗎？', ja:'プレゼント用に包んでいただけますか？', r:'Purezento-yō ni tsutsunde itadakemasu ka?' },
+  { zh:'這個可以退貨嗎？', ja:'これは返品できますか？', r:'Kore wa henpin dekimasu ka?' }
 ]}
 ];
 
@@ -1131,6 +1369,155 @@ phraseArea.addEventListener('click', async ev => {
   }
 });
 
+/* ---------------- 情境分頁 ---------------- */
+const sceneArea = document.getElementById('sceneArea');
+const sceneTabs = document.getElementById('sceneTabs');
+function sceneCardHTML(it, id) {
+  const kana = romajiToKana(it.r);
+  const star = isFav(id) ? '★' : '☆';
+  return '<div class="pcard" data-id="' + esc(id) + '">' +
+    '<div class="src-line">' + esc(it.zh) + '</div>' +
+    '<div class="ja-line" data-act="copy">' + esc(it.ja) + '</div>' +
+    '<div class="romaji-line">' + esc(it.r) + '</div>' +
+    (settings.showKana ? '<div class="kana-line">' + esc(kana) + '</div>' : '') +
+    '<div class="actions">' +
+    '<button class="copybtn" data-act="copy">複製</button>' +
+    '<button class="iconbtn" data-act="play">' + I_PLAY + '</button>' +
+    '<button class="iconbtn" data-act="slow">' + I_SLOW + '</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">' + I_GRAM + '</button>' +
+    '<button class="iconbtn' + (isFav(id) ? ' star-on' : '') + '" data-act="star">' + star + '</button>' +
+    '</div></div>';
+}
+function renderScenes() {
+  sceneTabs.innerHTML = SCENES.map((s, i) =>
+    '<button class="pill' + (i === sceneSub ? ' on' : '') + '" data-scene="' + i + '">' + esc(s.cat) + '</button>').join('');
+  const s = SCENES[sceneSub];
+  sceneArea.innerHTML =
+    '<div class="scene-sec">常用單字（點卡片可發音）</div>' +
+    '<div class="wordgrid">' + s.words.map(w =>
+      '<div class="wcard" data-wja="' + esc(w.ja) + '">' +
+      '<div class="wja">' + esc(w.ja) + '</div>' +
+      '<div class="wr">' + esc(w.r) + '</div>' +
+      '<div class="wzh">' + esc(w.zh) + '</div></div>').join('') + '</div>' +
+    '<div class="scene-sec">常用對話（可自行新增）</div>' +
+    '<div class="addrow"><input id="sceneAddInput" placeholder="輸入中文或日文，翻譯後加入「' + esc(s.cat) + '」"><button id="sceneAddBtn">新增</button></div>' +
+    (scenePhrases[s.cat] || []).slice().sort((a, b) => b.ts - a.ts).map(sceneCustomCardHTML).join('') +
+    s.phrases.map((it, ii) => sceneCardHTML(it, 'sc-' + sceneSub + '-' + ii)).join('');
+  document.getElementById('sceneAddBtn').onclick = addScenePhrase;
+  document.getElementById('sceneAddInput').addEventListener('keydown', e => { if (e.key === 'Enter') addScenePhrase(); });
+}
+function sceneCustomCardHTML(p) {
+  const star = isFav(p.id) ? '★' : '☆';
+  return '<div class="pcard" data-id="' + esc(p.id) + '">' +
+    '<div class="src-line">' + esc(p.zh) + '</div>' +
+    '<div class="ja-line" data-act="copy">' + esc(p.ja) + '</div>' +
+    '<div class="romaji-line">' + (p.r ? esc(p.r) : '（拼音取得失敗）') + '</div>' +
+    (settings.showKana && p.kana ? '<div class="kana-line">' + esc(p.kana) + '</div>' : '') +
+    '<div style="margin-top:6px;"><span class="tagchip">自訂</span></div>' +
+    '<div class="actions">' +
+    '<button class="copybtn" data-act="copy">複製</button>' +
+    '<button class="iconbtn" data-act="play">' + I_PLAY + '</button>' +
+    '<button class="iconbtn" data-act="slow">' + I_SLOW + '</button>' +
+    '<button class="iconbtn" data-act="grammar" title="文法">' + I_GRAM + '</button>' +
+    '<button class="iconbtn' + (isFav(p.id) ? ' star-on' : '') + '" data-act="star">' + star + '</button>' +
+    '<button class="iconbtn" data-act="edit" title="編輯">' + I_EDIT + '</button>' +
+    '<button class="iconbtn" data-act="del" title="刪除">' + I_DEL + '</button>' +
+    '</div></div>';
+}
+async function addScenePhrase() {
+  const el = document.getElementById('sceneAddInput');
+  const text = el.value.trim();
+  if (!text) return;
+  const cat = SCENES[sceneSub].cat;
+  const dir = dirMode !== 'auto' ? dirMode : detectDir(text);   // 尊重對話頁的手動方向覆蓋
+  el.disabled = true;
+  try {
+    const r = await translate(text, dir);
+    (scenePhrases[cat] = scenePhrases[cat] || []).push(
+      { id: uuid(), zh: r.zh, ja: r.ja, r: r.romaji, kana: r.kana, ts: Date.now() });
+    saveScenePhrases(); renderScenes();                         // 重繪後輸入框是新的空框
+    showToast('已加入「' + cat + '」');
+  } catch (err) { el.disabled = false; showToast(err.message || '翻譯失敗'); }
+}
+sceneTabs.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-scene]');
+  if (!b) return;
+  sceneSub = +b.dataset.scene;
+  renderScenes();
+  sceneArea.scrollTop = 0;
+});
+function sceneItemById(id) {
+  const m = /^sc-(\d+)-(\d+)$/.exec(id);
+  if (!m) return null;
+  return (SCENES[+m[1]] || { phrases: [] }).phrases[+m[2]] || null;
+}
+sceneArea.addEventListener('click', async ev => {
+  const w = ev.target.closest('.wcard');
+  if (w) { speak(w.dataset.wja, false, w); return; }
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  const id = btn.closest('.pcard').dataset.id;
+  const act = btn.dataset.act;
+  // 內建情境句
+  const it = sceneItemById(id);
+  if (it) {
+    if (act === 'copy') { copyText(it.ja, btn); return; }
+    if (act === 'play') { speak(it.ja, false, btn); return; }
+    if (act === 'slow') { speak(it.ja, true, btn); return; }
+    if (act === 'grammar') { openGrammarSheet(it.ja); return; }
+    if (act === 'star') {
+      if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); showToast('已從最愛移除'); }
+      else {
+        const sceneCat = (SCENES[+id.split('-')[1]] || {}).cat || '情境';
+        favorites.push({ id: id, ja: it.ja, romaji: it.r, kana: romajiToKana(it.r), zh: it.zh,
+          jaCasual: '', romajiCasual: '', tags: [sceneCat], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+        showToast('已加入最愛 ★');
+      }
+      saveFavorites(); renderScenes(); renderPhrases();
+    }
+    return;
+  }
+  // 自訂情境句
+  const cat = SCENES[sceneSub].cat;
+  const list = scenePhrases[cat] || [];
+  const p = list.find(x => x.id === id);
+  if (!p) return;
+  if (act === 'copy') { copyText(p.ja, btn); return; }
+  if (act === 'play') { speak(p.ja, false, btn); return; }
+  if (act === 'slow') { speak(p.ja, true, btn); return; }
+  if (act === 'grammar') { openGrammarSheet(p.ja); return; }
+  if (act === 'star') {
+    if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); showToast('已從最愛移除'); }
+    else {
+      favorites.push({ id: id, ja: p.ja, romaji: p.r, kana: p.kana, zh: p.zh,
+        jaCasual: '', romajiCasual: '', tags: [cat], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+      showToast('已加入最愛 ★');
+    }
+    saveFavorites(); renderScenes(); renderPhrases();
+    return;
+  }
+  if (act === 'edit') {
+    const out = await editUI('編輯句子', [
+      { key: 'ja', label: '日文', value: p.ja, multiline: true },
+      { key: 'zh', label: '中文', value: p.zh, multiline: true }
+    ]);
+    if (!out) return;
+    const jaChanged = out.ja.trim() !== p.ja;
+    p.ja = out.ja.trim(); p.zh = out.zh.trim();
+    if (jaChanged) {
+      try { p.r = await fetchRomajiOfJa(p.ja); p.kana = p.r ? romajiToKana(p.r) : ''; }
+      catch (e) { p.r = ''; p.kana = ''; showToast('拼音未更新（連線失敗）'); }
+    }
+    saveScenePhrases(); renderScenes();
+    return;
+  }
+  if (act === 'del') {
+    if (!(await confirmUI('刪除這句自訂句子？', '刪除', true))) return;
+    scenePhrases[cat] = list.filter(x => x.id !== id);
+    saveScenePhrases(); renderScenes();
+  }
+});
+
 /* ---------------- 歷史分頁 ---------------- */
 const histList = document.getElementById('histList');
 const hsearch = document.getElementById('hsearch');
@@ -1207,6 +1594,15 @@ function renderSettings() {
       '<input type="file" id="importFile" accept=".json,application/json" class="hidden"></div>' +
   '</div>' +
   '<div class="set-group">' +
+    '<div class="set-row"><label>雲端同步</label>' +
+      (settings.syncKey
+        ? '<button class="setbtn" id="syncNowBtn">立即同步</button><button class="setbtn red" id="syncKeyClear">停用</button>'
+        : '<input type="password" id="syncKeyIn" placeholder="貼上同步金鑰" style="flex:1;min-width:130px;padding:8px 10px;"><button class="setbtn" id="syncKeySave">啟用</button>') +
+      '<div class="hint">同一把金鑰的裝置共用一份雲端資料（最愛、歷史、文法筆記、情境自訂句；設定與 API key 只留本機）。開啟 app 自動同步，資料變更後約 30 秒自動上傳。</div></div>' +
+    '<div class="set-row"><label>同步狀態</label><span id="syncStatus" style="color:var(--fg2);font-size:14px;">' +
+      (settings.syncKey ? (settings.lastSyncAt ? '上次同步：' + fmtDate(settings.lastSyncAt) + ' ' + fmtTime(settings.lastSyncAt) : '尚未同步') : '未啟用') + '</span></div>' +
+  '</div>' +
+  '<div class="set-group">' +
     '<div class="set-row"><label>資料統計</label><span style="color:var(--fg2);font-size:14px;">' + stats + '</span></div>' +
     '<div class="set-row"><label>版本</label><span style="color:var(--fg2);font-size:14px;">v' + VERSION + '</span></div>' +
   '</div>';
@@ -1243,6 +1639,20 @@ function renderSettings() {
     b.disabled = false; b.textContent = '測試連線';
   };
   document.getElementById('aiModelSel').onchange = ev => { settings.aiModel = ev.target.value; saveSettings(); };
+  const skSave = document.getElementById('syncKeySave');
+  if (skSave) skSave.onclick = () => {
+    const v = document.getElementById('syncKeyIn').value.trim();
+    if (!v) { showToast('先貼上金鑰再按啟用'); return; }
+    settings.syncKey = v; saveSettings(); renderSettings();
+    syncNow(true);
+  };
+  const snBtn = document.getElementById('syncNowBtn');
+  if (snBtn) snBtn.onclick = () => syncNow(true);
+  const skClear = document.getElementById('syncKeyClear');
+  if (skClear) skClear.onclick = async () => {
+    if (!(await confirmUI('停用這台裝置的雲端同步？雲端與本機資料都不會被刪除。', '停用', true))) return;
+    settings.syncKey = ''; saveSettings(); renderSettings(); showToast('已停用同步');
+  };
   document.getElementById('exportBtn').onclick = exportBackup;
   document.getElementById('exportCopyBtn').onclick = exportCopy;
   document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
@@ -1260,10 +1670,43 @@ function renderVoiceSelect() {
 }
 
 /* ---------------- 匯出 / 匯入 ---------------- */
+/* 合併外部資料（匯入備份與雲端同步共用）：按 id 去重、只增不減，不動本機設定 */
+function mergeData(data) {
+  let nf = 0, nh = 0, ng = 0, ns = 0;
+  if (Array.isArray(data.favorites)) {
+    for (const f of data.favorites) {
+      if (f && typeof f.id === 'string' && f.id && !favorites.some(x => x.id === f.id)) { favorites.push(sanFav(f)); nf++; }
+    }
+  }
+  if (Array.isArray(data.history)) {
+    for (const h of data.history) {
+      if (h && typeof h.id === 'string' && h.id && !history.some(x => x.id === h.id)) { history.push(sanHist(h)); nh++; }
+    }
+    history.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    trimHistory();
+  }
+  if (Array.isArray(data.grammar)) {
+    for (const gn of data.grammar) {
+      if (gn && typeof gn.id === 'string' && gn.id && !grammarNotes.some(x => x.id === gn.id)) { grammarNotes.push(sanGrammarNote(gn)); ng++; }
+    }
+  }
+  if (data.scenePhrases && typeof data.scenePhrases === 'object' && !Array.isArray(data.scenePhrases)) {
+    for (const k of Object.keys(data.scenePhrases)) {
+      if (!Array.isArray(data.scenePhrases[k])) continue;
+      scenePhrases[k] = scenePhrases[k] || [];
+      for (const p of data.scenePhrases[k]) {
+        if (p && typeof p.id === 'string' && p.id && !scenePhrases[k].some(x => x.id === p.id)) {
+          scenePhrases[k].push(sanScenePhrase(p)); ns++;
+        }
+      }
+    }
+  }
+  return { nf, nh, ng, ns, total: nf + nh + ng + ns };
+}
 function backupJSON() {
   return JSON.stringify({ app: 'nihongo-tool', version: VERSION, exportedAt: new Date().toISOString(),
-    favorites: favorites, history: history, grammar: grammarNotes,
-    settings: Object.assign({}, settings, { apiKey: '' }) });   // key 絕不進備份檔
+    favorites: favorites, history: history, grammar: grammarNotes, scenePhrases: scenePhrases,
+    settings: Object.assign({}, settings, { apiKey: '', syncKey: '' }) });   // 兩把 key 絕不進備份檔
 }
 function exportBackup() {
   flushAll();
@@ -1290,37 +1733,53 @@ function importBackup(ev) {
     try {
       const data = JSON.parse(reader.result);
       if (!data || data.app !== 'nihongo-tool') throw new Error('not a backup');
-      let nf = 0, nh = 0;
-      if (Array.isArray(data.favorites)) {
-        for (const f of data.favorites) {
-          if (f && typeof f.id === 'string' && f.id && !favorites.some(x => x.id === f.id)) { favorites.push(sanFav(f)); nf++; }
-        }
-      }
-      if (Array.isArray(data.history)) {
-        for (const h of data.history) {
-          if (h && typeof h.id === 'string' && h.id && !history.some(x => x.id === h.id)) { history.push(sanHist(h)); nh++; }
-        }
-        history.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        trimHistory();
-      }
-      let ng = 0;
-      if (Array.isArray(data.grammar)) {
-        for (const gn of data.grammar) {
-          if (gn && typeof gn.id === 'string' && gn.id && !grammarNotes.some(x => x.id === gn.id)) { grammarNotes.push(sanGrammarNote(gn)); ng++; }
-        }
-        saveGrammar();
-      }
+      const m = mergeData(data);
       if (data.settings && typeof data.settings === 'object') {
-        const localKey = settings.apiKey;                       // 匯入不覆蓋本機 key
+        const localKey = settings.apiKey, localSync = settings.syncKey;   // 匯入不覆蓋本機 key
         settings = sanSettings(Object.assign({}, settings, data.settings));
-        settings.apiKey = localKey;
+        settings.apiKey = localKey; settings.syncKey = localSync;
         applyTheme();
       }
       flushAll(); renderAll();
-      showToast('匯入完成：最愛 +' + nf + '、歷史 +' + nh + '、文法 +' + ng);
+      showToast('匯入完成：最愛 +' + m.nf + '、歷史 +' + m.nh + '、文法 +' + m.ng + '、情境句 +' + m.ns);
     } catch (e) { showToast('匯入失敗：不是有效的備份 JSON'); }
   };
   reader.readAsText(file);
+}
+
+/* ---------------- 雲端同步 ---------------- */
+let syncBusy = false;
+let _syncTimer = null;
+function scheduleSync() {                            // 資料變更後 30 秒自動推雲端
+  if (!settings.syncKey || !navigator.onLine) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => syncNow(false), 30000);
+}
+async function syncNow(manual) {
+  if (syncBusy) { if (manual) showToast('同步進行中…'); return; }
+  if (!settings.syncKey) { if (manual) showToast('請先輸入同步金鑰'); return; }
+  syncBusy = true;
+  clearTimeout(_syncTimer);
+  const auth = { 'Authorization': 'Bearer ' + settings.syncKey };
+  try {
+    const res = await fetch('/api/sync', { headers: auth, cache: 'no-store' });
+    if (res.status === 401) throw new Error('同步金鑰不正確');
+    if (!res.ok) throw new Error('下載失敗（' + res.status + '）');
+    const remote = await res.json();
+    let merged = { total: 0 };
+    if (remote && remote.app === 'nihongo-tool') merged = mergeData(remote);
+    const put = await fetch('/api/sync', { method: 'PUT', cache: 'no-store',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, auth), body: backupJSON() });
+    if (put.status === 401) throw new Error('同步金鑰不正確');
+    if (!put.ok) throw new Error('上傳失敗（' + put.status + '）');
+    settings.lastSyncAt = Date.now();
+    flushAll();
+    if (merged.total) renderAll();
+    else if (document.getElementById('syncStatus')) renderSettings();   // 更新「上次同步」時間
+    if (manual) showToast(merged.total ? '同步完成：合併 ' + merged.total + ' 筆 ✓' : '同步完成 ✓');
+  } catch (e) {
+    if (manual) showToast(e.message || '同步失敗（請檢查網路）');
+  } finally { syncBusy = false; }
 }
 
 /* ---------------- 主題 ---------------- */
@@ -1556,7 +2015,7 @@ const GRAMMAR = [
 
 /* ---------------- 文法筆記（localStorage） ---------------- */
 let grammarNotes = Store.get('njp.grammar', []).filter(n => n && n.id).map(sanGrammarNote);
-const saveGrammar = debounce(() => Store.set('njp.grammar', grammarNotes), 300);
+const saveGrammar = debounce(() => { Store.set('njp.grammar', grammarNotes); scheduleSync(); }, 300);
 function noteByKey(pk) { return grammarNotes.find(n => n.patternKey === pk); }
 function bumpNote(g, srcJa) {
   let n = noteByKey(g.key);
@@ -1932,13 +2391,14 @@ if (window.visualViewport) {
 
 /* ---------------- 初始化 ---------------- */
 function renderAll() {
-  renderChat(); renderPhrases(); renderHistory(); renderSettings();
+  renderChat(); renderPhrases(); renderScenes(); renderHistory(); renderSettings();
 }
 applyTheme();
 renderDirBtn();
 renderRegisterBtns();
 renderAll();
-window.addEventListener('online', () => showToast('網路已恢復'));
+if (settings.syncKey && navigator.onLine) syncNow(false);   // 開啟 app 自動同步一次
+window.addEventListener('online', () => { showToast('網路已恢復'); scheduleSync(); });
 window.addEventListener('offline', () => showToast('目前離線：翻譯暫不可用，句庫與發音照常'));
 </script>
 </body>

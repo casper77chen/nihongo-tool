@@ -1,0 +1,11 @@
+{
+  "name": "nihongo-tool",
+  "private": true,
+  "version": "1.4.0",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

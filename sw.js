@@ -1,5 +1,5 @@
 /* 日本語ツール Service Worker — network-first、失敗時回快取，讓離線也能開頁 */
-const CACHE = 'njp-v4';
+const CACHE = 'njp-v9';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])));
@@ -16,6 +16,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;   // 翻譯 API 等跨域請求不經快取
+  if (url.pathname.startsWith('/api/')) return;                               // 同步 API 絕不進快取
   e.respondWith(
     fetch(e.request)
       .then(res => {

@@ -184,6 +184,29 @@ main{flex:1; overflow:hidden; position:relative;}
 </style>
 </head>
 <body>
+<script>
+/* 錯誤顯示條：JS 出錯直接顯示在畫面上（紅條＋訊息＋行號），讓非工程師使用者能截圖回報 */
+(function () {
+  function show(msg) {
+    var d = document.getElementById('errbanner');
+    if (!d) {
+      d = document.createElement('div');
+      d.id = 'errbanner';
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#c24a3a;color:#fff;font-size:12px;line-height:1.4;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));word-break:break-all;';
+      d.onclick = function () { d.remove(); };
+      (document.body || document.documentElement).appendChild(d);
+    }
+    d.textContent = '⚠ ' + msg + '（點此關閉）';
+  }
+  window.addEventListener('error', function (e) {
+    show((e.message || '未知錯誤') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || '?'));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    show('未攔截的非同步錯誤：' + (r && r.message ? r.message : String(r)));
+  });
+})();
+</script>
 <div id="warnbar" class="hidden"></div>
 <main>
   <!-- 對話 -->
@@ -275,7 +298,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -642,10 +665,13 @@ async function fetchRomajiOfJa(ja) {
 /* ---------------- TTS ---------------- */
 let jaVoices = [];
 let speakingBtn = null;
-function loadVoices() {
-  try {
+function refreshJaVoices() {                        // 只更新清單，絕不觸發重繪——
+  try {                                             // renderVoiceSelect→pickVoice→這裡若再重繪就是無限遞迴
     jaVoices = speechSynthesis.getVoices().filter(v => v.lang && v.lang.toLowerCase().indexOf('ja') === 0);
   } catch (e) { jaVoices = []; }
+}
+function loadVoices() {
+  refreshJaVoices();
   renderVoiceSelect();
 }
 if ('speechSynthesis' in window) {
@@ -653,7 +679,7 @@ if ('speechSynthesis' in window) {
   loadVoices();
 }
 function pickVoice() {
-  if (!jaVoices.length) loadVoices();               // 桌面 Chrome 語音清單載入慢，用到時再抓一次
+  if (!jaVoices.length) refreshJaVoices();          // 桌面 Chrome 語音清單載入慢，用到時再抓一次
   if (settings.voiceURI) {
     const v = jaVoices.find(v => v.voiceURI === settings.voiceURI);
     if (v) return v;

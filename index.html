@@ -275,7 +275,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.4.1';
+const VERSION = '1.5.0';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -354,7 +354,39 @@ function sanSettings(s) {
 let history = Store.get('njp.history', []).filter(h => h && h.id).map(sanHist);
 let favorites = Store.get('njp.favorites', []).filter(f => f && f.id).map(sanFav);
 let scenePhrases = sanScenePhrases(Store.get('njp.scenePhrases', {}));   // 情境自訂句：{ 情境名: [句子] }
+/* 刪除墓碑：{ fav|hist|grammar|scene: { id: 刪除時間 } }。同步時交換，讓刪除傳到另一台、不被回貼 */
+function sanDeletions(raw) {
+  const out = { fav: {}, hist: {}, grammar: {}, scene: {} };
+  if (!raw || typeof raw !== 'object') return out;
+  const cutoff = Date.now() - 180 * 86400000;   // 墓碑留 180 天，夠久到所有裝置都同步過
+  for (const coll of Object.keys(out)) {
+    const m = raw[coll];
+    if (!m || typeof m !== 'object') continue;
+    for (const id of Object.keys(m)) {
+      const ts = Number(m[id]) || 0;
+      if (ts > cutoff) out[coll][id] = ts;
+    }
+  }
+  return out;
+}
+let deletions = sanDeletions(Store.get('njp.deletions', {}));
 let settings = sanSettings(Object.assign({}, DEFAULT_SETTINGS, Store.get('njp.settings', {})));
+
+/* 一次性設定連結：開「網址#setup=<key>」（或 ?setup=<key>）自動存 key，隨即從網址與歷史抹除 key 痕跡。
+   刻意不錨定結尾——通訊軟體常在連結尾端黏空格或標點；格式錯誤要顯示提示，靜默失敗無法遠端排查 */
+(function applySetupLink() {
+  const src = location.hash + ' ' + location.search;
+  const m = src.match(/setup=(sk-ant-[A-Za-z0-9_-]{20,})/);
+  if (!m) {
+    if (/setup=/.test(src)) setTimeout(() => showToast('設定連結不完整，請重貼完整連結，或到設定頁手動貼上金鑰'), 400);
+    return;
+  }
+  settings.apiKey = m[1];
+  Store.set('njp.settings', settings);
+  window.history.replaceState(null, '', location.pathname);  // 全域 history 已被對話陣列遮蔽；search 可能含 key，一併抹掉
+  setTimeout(() => showToast('AI 功能已設定完成 ✓'), 400);
+})();
+
 let register = settings.defaultRegister;          // 'polite' | 'casual'
 let dirMode = 'auto';                             // 'auto' | 'zh2ja' | 'ja2zh'
 let phraseSub = 'fav';                            // 'fav' | 'builtin'
@@ -377,11 +409,15 @@ const saveHistory = debounce(() => { Store.set('njp.history', history); schedule
 const saveFavorites = debounce(() => { Store.set('njp.favorites', favorites); scheduleSync(); }, 300);
 const saveSettings = debounce(() => Store.set('njp.settings', settings), 300);
 const saveScenePhrases = debounce(() => { Store.set('njp.scenePhrases', scenePhrases); scheduleSync(); }, 300);
+const saveDeletions = debounce(() => Store.set('njp.deletions', deletions), 300);
+function markDeleted(coll, id) { if (typeof id === 'string' && id) { deletions[coll][id] = Date.now(); saveDeletions(); } }
+function unmarkDeleted(coll, id) { if (deletions[coll][id]) { delete deletions[coll][id]; saveDeletions(); } }
 function flushAll() {
   Store.set('njp.history', history);
   Store.set('njp.favorites', favorites);
   Store.set('njp.settings', settings);
   Store.set('njp.scenePhrases', scenePhrases);
+  Store.set('njp.deletions', deletions);
   if (window.__flushGrammar) window.__flushGrammar();
 }
 window.addEventListener('pagehide', flushAll);
@@ -1019,10 +1055,12 @@ async function handleCardAction(wrapEl, act, btn) {
   if (act === 'star') {
     if (isFav(e.id)) {
       favorites = favorites.filter(f => f.id !== e.id);
+      markDeleted('fav', e.id);
       e.starred = false; showToast('已從最愛移除');
     } else {
       favorites.push({ id: e.id, ja: e.ja, romaji: e.romaji, kana: e.kana, zh: e.zh,
         jaCasual: '', romajiCasual: '', tags: [], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+      unmarkDeleted('fav', e.id);
       e.starred = true; showToast('已加入最愛 ★');
     }
     saveFavorites(); saveHistory(); renderAll();
@@ -1054,6 +1092,7 @@ async function handleCardAction(wrapEl, act, btn) {
   if (act === 'del') {
     if (!(await confirmUI('刪除這一則翻譯？', '刪除', true))) return;
     history = history.filter(x => x.id !== id);
+    markDeleted('hist', id);
     saveHistory(); renderAll();
   }
 }
@@ -1314,10 +1353,11 @@ phraseArea.addEventListener('click', async ev => {
     if (act === 'play') { speak(ja, false, btn); return; }
     if (act === 'slow') { speak(ja, true, btn); return; }
     if (act === 'star') {
-      if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); showToast('已從最愛移除'); }
+      if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); markDeleted('fav', id); showToast('已從最愛移除'); }
       else {
         favorites.push({ id: id, ja: bi.ja, romaji: bi.r, kana: romajiToKana(bi.r), zh: bi.zh,
           jaCasual: bi.jc, romajiCasual: bi.rc, tags: ['內建'], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+        unmarkDeleted('fav', id);
         showToast('已加入最愛 ★');
       }
       saveFavorites(); renderPhrases();
@@ -1363,6 +1403,7 @@ phraseArea.addEventListener('click', async ev => {
   if (act === 'del') {
     if (!(await confirmUI('從最愛刪除這一句？', '刪除', true))) return;
     favorites = favorites.filter(x => x.id !== id);
+    markDeleted('fav', id);
     const h = history.find(x => x.id === id);
     if (h) h.starred = false;
     saveFavorites(); saveHistory(); renderAll();
@@ -1466,11 +1507,12 @@ sceneArea.addEventListener('click', async ev => {
     if (act === 'slow') { speak(it.ja, true, btn); return; }
     if (act === 'grammar') { openGrammarSheet(it.ja); return; }
     if (act === 'star') {
-      if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); showToast('已從最愛移除'); }
+      if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); markDeleted('fav', id); showToast('已從最愛移除'); }
       else {
         const sceneCat = (SCENES[+id.split('-')[1]] || {}).cat || '情境';
         favorites.push({ id: id, ja: it.ja, romaji: it.r, kana: romajiToKana(it.r), zh: it.zh,
           jaCasual: '', romajiCasual: '', tags: [sceneCat], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+        unmarkDeleted('fav', id);
         showToast('已加入最愛 ★');
       }
       saveFavorites(); renderScenes(); renderPhrases();
@@ -1487,10 +1529,11 @@ sceneArea.addEventListener('click', async ev => {
   if (act === 'slow') { speak(p.ja, true, btn); return; }
   if (act === 'grammar') { openGrammarSheet(p.ja); return; }
   if (act === 'star') {
-    if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); showToast('已從最愛移除'); }
+    if (isFav(id)) { favorites = favorites.filter(f => f.id !== id); markDeleted('fav', id); showToast('已從最愛移除'); }
     else {
       favorites.push({ id: id, ja: p.ja, romaji: p.r, kana: p.kana, zh: p.zh,
         jaCasual: '', romajiCasual: '', tags: [cat], copyCount: 0, lastUsed: Date.now(), ts: Date.now() });
+      unmarkDeleted('fav', id);
       showToast('已加入最愛 ★');
     }
     saveFavorites(); renderScenes(); renderPhrases();
@@ -1514,6 +1557,7 @@ sceneArea.addEventListener('click', async ev => {
   if (act === 'del') {
     if (!(await confirmUI('刪除這句自訂句子？', '刪除', true))) return;
     scenePhrases[cat] = list.filter(x => x.id !== id);
+    markDeleted('scene', id);
     saveScenePhrases(); renderScenes();
   }
 });
@@ -1546,6 +1590,7 @@ histList.addEventListener('click', ev => {
 document.getElementById('clearhistbtn').addEventListener('click', async () => {
   if (!history.length) { showToast('歷史已是空的'); return; }
   if (!(await doubleConfirm('清除全部歷史紀錄？此動作無法復原（最愛清單不受影響）。', '再確認一次：確定全部清除？'))) return;
+  history.forEach(e => markDeleted('hist', e.id));
   history = [];
   saveHistory(); renderAll(); showToast('歷史已清除');
 });
@@ -1670,24 +1715,40 @@ function renderVoiceSelect() {
 }
 
 /* ---------------- 匯出 / 匯入 ---------------- */
-/* 合併外部資料（匯入備份與雲端同步共用）：按 id 去重、只增不減，不動本機設定 */
-function mergeData(data) {
-  let nf = 0, nh = 0, ng = 0, ns = 0;
+/* 合併外部資料（匯入備份與雲端同步共用）：按 id 去重、不動本機設定。
+   fromSync=true（雲端同步）：交換刪除墓碑——被任一台刪過的 id 不再合併、本機有就移除。
+   fromSync=false（手動匯入備份）：視為復原意圖，匯入的 id 順手清墓碑，資料可以救回來。 */
+function mergeData(data, fromSync) {
+  let nf = 0, nh = 0, ng = 0, ns = 0, nd = 0;
+  if (fromSync && data.deletions && typeof data.deletions === 'object') {
+    const rd = sanDeletions(data.deletions);
+    for (const coll of Object.keys(rd)) {
+      for (const id of Object.keys(rd[coll])) {
+        if (!deletions[coll][id] || deletions[coll][id] < rd[coll][id]) deletions[coll][id] = rd[coll][id];
+      }
+    }
+    saveDeletions();
+  }
+  const dead = (coll, id) => {
+    if (fromSync) return !!deletions[coll][id];
+    unmarkDeleted(coll, id);
+    return false;
+  };
   if (Array.isArray(data.favorites)) {
     for (const f of data.favorites) {
-      if (f && typeof f.id === 'string' && f.id && !favorites.some(x => x.id === f.id)) { favorites.push(sanFav(f)); nf++; }
+      if (f && typeof f.id === 'string' && f.id && !dead('fav', f.id) && !favorites.some(x => x.id === f.id)) { favorites.push(sanFav(f)); nf++; }
     }
   }
   if (Array.isArray(data.history)) {
     for (const h of data.history) {
-      if (h && typeof h.id === 'string' && h.id && !history.some(x => x.id === h.id)) { history.push(sanHist(h)); nh++; }
+      if (h && typeof h.id === 'string' && h.id && !dead('hist', h.id) && !history.some(x => x.id === h.id)) { history.push(sanHist(h)); nh++; }
     }
     history.sort((a, b) => (a.ts || 0) - (b.ts || 0));
     trimHistory();
   }
   if (Array.isArray(data.grammar)) {
     for (const gn of data.grammar) {
-      if (gn && typeof gn.id === 'string' && gn.id && !grammarNotes.some(x => x.id === gn.id)) { grammarNotes.push(sanGrammarNote(gn)); ng++; }
+      if (gn && typeof gn.id === 'string' && gn.id && !dead('grammar', gn.id) && !grammarNotes.some(x => x.id === gn.id)) { grammarNotes.push(sanGrammarNote(gn)); ng++; }
     }
   }
   if (data.scenePhrases && typeof data.scenePhrases === 'object' && !Array.isArray(data.scenePhrases)) {
@@ -1695,17 +1756,35 @@ function mergeData(data) {
       if (!Array.isArray(data.scenePhrases[k])) continue;
       scenePhrases[k] = scenePhrases[k] || [];
       for (const p of data.scenePhrases[k]) {
-        if (p && typeof p.id === 'string' && p.id && !scenePhrases[k].some(x => x.id === p.id)) {
+        if (p && typeof p.id === 'string' && p.id && !dead('scene', p.id) && !scenePhrases[k].some(x => x.id === p.id)) {
           scenePhrases[k].push(sanScenePhrase(p)); ns++;
         }
       }
     }
   }
-  return { nf, nh, ng, ns, total: nf + nh + ng + ns };
+  if (fromSync) {   // 套用墓碑：他端刪掉的，本機也移除
+    let before = favorites.length;
+    favorites = favorites.filter(x => !deletions.fav[x.id]);
+    nd += before - favorites.length;
+    before = history.length;
+    history = history.filter(x => !deletions.hist[x.id]);
+    nd += before - history.length;
+    history.forEach(h => { if (h.starred && deletions.fav[h.id]) h.starred = false; });
+    before = grammarNotes.length;
+    grammarNotes = grammarNotes.filter(x => !deletions.grammar[x.id]);
+    nd += before - grammarNotes.length;
+    for (const k of Object.keys(scenePhrases)) {
+      before = scenePhrases[k].length;
+      scenePhrases[k] = scenePhrases[k].filter(x => !deletions.scene[x.id]);
+      nd += before - scenePhrases[k].length;
+    }
+  }
+  return { nf, nh, ng, ns, nd, total: nf + nh + ng + ns + nd };
 }
 function backupJSON() {
   return JSON.stringify({ app: 'nihongo-tool', version: VERSION, exportedAt: new Date().toISOString(),
     favorites: favorites, history: history, grammar: grammarNotes, scenePhrases: scenePhrases,
+    deletions: deletions,
     settings: Object.assign({}, settings, { apiKey: '', syncKey: '' }) });   // 兩把 key 絕不進備份檔
 }
 function exportBackup() {
@@ -1767,7 +1846,7 @@ async function syncNow(manual) {
     if (!res.ok) throw new Error('下載失敗（' + res.status + '）');
     const remote = await res.json();
     let merged = { total: 0 };
-    if (remote && remote.app === 'nihongo-tool') merged = mergeData(remote);
+    if (remote && remote.app === 'nihongo-tool') merged = mergeData(remote, true);
     const put = await fetch('/api/sync', { method: 'PUT', cache: 'no-store',
       headers: Object.assign({ 'Content-Type': 'application/json' }, auth), body: backupJSON() });
     if (put.status === 401) throw new Error('同步金鑰不正確');
@@ -1776,7 +1855,12 @@ async function syncNow(manual) {
     flushAll();
     if (merged.total) renderAll();
     else if (document.getElementById('syncStatus')) renderSettings();   // 更新「上次同步」時間
-    if (manual) showToast(merged.total ? '同步完成：合併 ' + merged.total + ' 筆 ✓' : '同步完成 ✓');
+    if (manual) {
+      const parts = [];
+      if (merged.total - (merged.nd || 0) > 0) parts.push('合併 ' + (merged.total - merged.nd) + ' 筆');
+      if (merged.nd) parts.push('移除 ' + merged.nd + ' 筆');
+      showToast(parts.length ? '同步完成：' + parts.join('、') + ' ✓' : '同步完成 ✓');
+    }
   } catch (e) {
     if (manual) showToast(e.message || '同步失敗（請檢查網路）');
   } finally { syncBusy = false; }
@@ -2326,6 +2410,7 @@ async function handleGrammarNoteAction(id, act) {
   if (act === 'del') {
     if (!(await confirmUI('刪除這條文法筆記？', '刪除', true))) return;
     grammarNotes = grammarNotes.filter(x => x.id !== id);
+    markDeleted('grammar', id);
     saveGrammar(); renderPhrases();
   }
 }

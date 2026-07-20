@@ -19,6 +19,11 @@
 - `awk '/<script>/{f=1;next}/<\/script>/{f=0}f' index.html > /tmp/njp.js && node --check /tmp/njp.js`
 - `node --check sw.js`
 
+## 程式內部注意
+- 全域 `let history`（對話陣列）遮蔽 `window.history`——用瀏覽器 History API 必須寫 `window.history.*`（07-20 實踩）
+- 一次性設定連結：`/#setup=<sk-ant-key>` 或 `/?setup=<key>` 自動存 apiKey＋replaceState 抹痕跡（applySetupLink）；正則不錨定結尾（容忍通訊軟體黏的尾端雜字元），有 setup= 但 key 格式壞時顯示錯誤 toast
+- 同步刪除（v1.5.0）：刪除墓碑 `njp.deletions`（{fav|hist|grammar|scene: {id: ts}}，留 180 天）；mergeData(data, fromSync)——同步交換墓碑、兩邊真刪；手動匯入備份＝復原意圖、會清墓碑救回資料；重新加星同 id 走 unmarkDeleted；trimHistory 自動修剪不記墓碑
+
 ## 已知限制（規格內建取捨）
 - 即時翻譯的常體＝規則式近似轉換（卡片有標註）；內建句庫是手寫雙版本
 - 平假名行＝羅馬拼音反推近似值

@@ -12,6 +12,10 @@ const KEY = process.env.SYNC_KEY || '';
    舊 SYNC_KEY 保留、仍對應 sync.json，既有資料零遷移 */
 const EXTRA_KEYS = (process.env.SYNC_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
 
+// 搬家轉址：設了 REDIRECT_TO 就全站 308 到新網址
+const REDIRECT_TO = (process.env.REDIRECT_TO || '').replace(/\/$/, '');
+if (REDIRECT_TO) app.use((req, res) => res.redirect(308, REDIRECT_TO + req.originalUrl));
+
 app.use(express.json({ limit: '5mb' }));
 
 function safeEq(a, b) {

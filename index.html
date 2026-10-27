@@ -106,6 +106,11 @@ main{flex:1; overflow:hidden; position:relative;}
 .subtabs{display:flex; gap:8px; padding:10px 12px 0;}
 .pcard{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px 14px; margin-bottom:10px; box-shadow:var(--shadow);}
 .tagchip{display:inline-block; background:var(--tag); border-radius:999px; padding:2px 10px; font-size:12px; color:var(--fg2); margin-right:4px;}
+.note-head{display:flex; align-items:center; gap:6px;}
+.note-head .note-name{flex:1; font-size:16px; font-weight:700; word-break:break-word;}
+.note-content{white-space:pre-wrap; word-break:break-word; font-size:14px; margin-top:6px;
+  max-height:66px; overflow:hidden; cursor:pointer;}
+.note-content.open{max-height:none;}
 .tagfilter{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
 .tagfilter .pill{min-height:32px; padding:3px 12px;}
 .cat-head{font-size:15px; font-weight:600; padding:10px 4px 6px; color:var(--fg2); display:flex; align-items:center; min-height:44px; width:100%; text-align:left;}
@@ -255,6 +260,15 @@ main{flex:1; overflow:hidden; position:relative;}
       <div id="histList"></div>
     </div>
   </section>
+  <!-- 筆記 -->
+  <section id="tab-notes" class="tab">
+    <div class="tabhead">
+      <h1>筆記</h1>
+      <div class="sp"></div>
+      <button class="pill" id="noteAddBtn">＋ 新增筆記</button>
+    </div>
+    <div class="scroll" id="noteArea"></div>
+  </section>
   <!-- 設定 -->
   <section id="tab-settings" class="tab">
     <div class="tabhead"><h1>設定</h1></div>
@@ -279,6 +293,7 @@ main{flex:1; overflow:hidden; position:relative;}
   <button data-tab="phrases">句庫</button>
   <button data-tab="scenes">情境</button>
   <button data-tab="history">歷史</button>
+  <button data-tab="notes">筆記</button>
   <button data-tab="settings">設定</button>
 </nav>
 
@@ -298,7 +313,7 @@ main{flex:1; overflow:hidden; position:relative;}
    日本語ツール — 個人日語溝通工具  v1.0.0
    單檔、零依賴。規格見專案規劃書。
    ============================================================ */
-const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 
 /* ---------------- 儲存模組（localStorage + 記憶體降級） ---------------- */
 const Store = (() => {
@@ -361,6 +376,12 @@ function sanGrammarNote(n) {
       q: S_(d.q), answer: S_(d.answer), ok: typeof d.ok === 'boolean' ? d.ok : null,
       corrected: S_(d.corrected), ts: Number(d.ts) || 0 })) };
 }
+function sanNote(n) {
+  return { id: S_(n.id), name: S_(n.name), content: S_(n.content),
+    tags: Array.isArray(n.tags) ? n.tags.filter(t => typeof t === 'string') : [],
+    starred: !!n.starred, order: Number(n.order) || 0,
+    ts: Number(n.ts) || Date.now(), updatedAt: Number(n.updatedAt) || 0 };
+}
 function sanSettings(s) {
   s.slowRate = Math.min(0.8, Math.max(0.4, Number(s.slowRate) || 0.6));
   s.showKana = !!s.showKana;
@@ -377,9 +398,10 @@ function sanSettings(s) {
 let history = Store.get('njp.history', []).filter(h => h && h.id).map(sanHist);
 let favorites = Store.get('njp.favorites', []).filter(f => f && f.id).map(sanFav);
 let scenePhrases = sanScenePhrases(Store.get('njp.scenePhrases', {}));   // 情境自訂句：{ 情境名: [句子] }
-/* 刪除墓碑：{ fav|hist|grammar|scene: { id: 刪除時間 } }。同步時交換，讓刪除傳到另一台、不被回貼 */
+let notes = Store.get('njp.notes', []).filter(n => n && n.id).map(sanNote);   // 學習筆記
+/* 刪除墓碑：{ fav|hist|grammar|scene|note: { id: 刪除時間 } }。同步時交換，讓刪除傳到另一台、不被回貼 */
 function sanDeletions(raw) {
-  const out = { fav: {}, hist: {}, grammar: {}, scene: {} };
+  const out = { fav: {}, hist: {}, grammar: {}, scene: {}, note: {} };
   if (!raw || typeof raw !== 'object') return out;
   const cutoff = Date.now() - 180 * 86400000;   // 墓碑留 180 天，夠久到所有裝置都同步過
   for (const coll of Object.keys(out)) {
@@ -400,14 +422,18 @@ let settings = sanSettings(Object.assign({}, DEFAULT_SETTINGS, Store.get('njp.se
 (function applySetupLink() {
   const src = location.hash + ' ' + location.search;
   const m = src.match(/setup=(sk-ant-[A-Za-z0-9_-]{20,})/);
-  if (!m) {
-    if (/setup=/.test(src)) setTimeout(() => showToast('設定連結不完整，請重貼完整連結，或到設定頁手動貼上金鑰'), 400);
+  const ms = src.match(/sync=(njp_[A-Za-z0-9]{16,})/);   // 同步金鑰格式 njp_<hex>，同樣不錨定結尾
+  if (!m && !ms) {
+    if (/(setup|sync)=/.test(src)) setTimeout(() => showToast('設定連結不完整，請重貼完整連結，或到設定頁手動貼上金鑰'), 400);
     return;
   }
-  settings.apiKey = m[1];
+  if (m) settings.apiKey = m[1];
+  if (ms) settings.syncKey = ms[1];                       // 啟動尾端的 syncNow 會自動拉一次雲端資料
   Store.set('njp.settings', settings);
   window.history.replaceState(null, '', location.pathname);  // 全域 history 已被對話陣列遮蔽；search 可能含 key，一併抹掉
-  setTimeout(() => showToast('AI 功能已設定完成 ✓'), 400);
+  const done = [m && 'AI 功能', ms && '雲端同步'].filter(Boolean).join('與');
+  const broken = (!m && /setup=/.test(src)) || (!ms && /sync=/.test(src));
+  setTimeout(() => showToast(done + '已設定完成 ✓' + (broken ? '，但另一組金鑰格式不完整，請到設定頁手動貼上' : '')), 400);
 })();
 
 let register = settings.defaultRegister;          // 'polite' | 'casual'
@@ -432,6 +458,7 @@ const saveHistory = debounce(() => { Store.set('njp.history', history); schedule
 const saveFavorites = debounce(() => { Store.set('njp.favorites', favorites); scheduleSync(); }, 300);
 const saveSettings = debounce(() => Store.set('njp.settings', settings), 300);
 const saveScenePhrases = debounce(() => { Store.set('njp.scenePhrases', scenePhrases); scheduleSync(); }, 300);
+const saveNotes = debounce(() => { Store.set('njp.notes', notes); scheduleSync(); }, 300);
 const saveDeletions = debounce(() => Store.set('njp.deletions', deletions), 300);
 function markDeleted(coll, id) { if (typeof id === 'string' && id) { deletions[coll][id] = Date.now(); saveDeletions(); } }
 function unmarkDeleted(coll, id) { if (deletions[coll][id]) { delete deletions[coll][id]; saveDeletions(); } }
@@ -440,6 +467,7 @@ function flushAll() {
   Store.set('njp.favorites', favorites);
   Store.set('njp.settings', settings);
   Store.set('njp.scenePhrases', scenePhrases);
+  Store.set('njp.notes', notes);
   Store.set('njp.deletions', deletions);
   if (window.__flushGrammar) window.__flushGrammar();
 }
@@ -1669,7 +1697,7 @@ function renderSettings() {
       (settings.syncKey
         ? '<button class="setbtn" id="syncNowBtn">立即同步</button><button class="setbtn red" id="syncKeyClear">停用</button>'
         : '<input type="password" id="syncKeyIn" placeholder="貼上同步金鑰" style="flex:1;min-width:130px;padding:8px 10px;"><button class="setbtn" id="syncKeySave">啟用</button>') +
-      '<div class="hint">同一把金鑰的裝置共用一份雲端資料（最愛、歷史、文法筆記、情境自訂句；設定與 API key 只留本機）。開啟 app 自動同步，資料變更後約 30 秒自動上傳。</div></div>' +
+      '<div class="hint">同一把金鑰的裝置共用一份雲端資料（最愛、歷史、文法筆記、情境自訂句、筆記；設定與 API key 只留本機）。開啟 app 自動同步，資料變更後約 30 秒自動上傳。</div></div>' +
     '<div class="set-row"><label>同步狀態</label><span id="syncStatus" style="color:var(--fg2);font-size:14px;">' +
       (settings.syncKey ? (settings.lastSyncAt ? '上次同步：' + fmtDate(settings.lastSyncAt) + ' ' + fmtTime(settings.lastSyncAt) : '尚未同步') : '未啟用') + '</span></div>' +
   '</div>' +
@@ -1745,7 +1773,7 @@ function renderVoiceSelect() {
    fromSync=true（雲端同步）：交換刪除墓碑——被任一台刪過的 id 不再合併、本機有就移除。
    fromSync=false（手動匯入備份）：視為復原意圖，匯入的 id 順手清墓碑，資料可以救回來。 */
 function mergeData(data, fromSync) {
-  let nf = 0, nh = 0, ng = 0, ns = 0, nd = 0;
+  let nf = 0, nh = 0, ng = 0, ns = 0, nn = 0, nd = 0;
   if (fromSync && data.deletions && typeof data.deletions === 'object') {
     const rd = sanDeletions(data.deletions);
     for (const coll of Object.keys(rd)) {
@@ -1777,6 +1805,14 @@ function mergeData(data, fromSync) {
       if (gn && typeof gn.id === 'string' && gn.id && !dead('grammar', gn.id) && !grammarNotes.some(x => x.id === gn.id)) { grammarNotes.push(sanGrammarNote(gn)); ng++; }
     }
   }
+  if (Array.isArray(data.notes)) {
+    for (const n of data.notes) {
+      if (!(n && typeof n.id === 'string' && n.id) || dead('note', n.id)) continue;
+      const ex = notes.find(x => x.id === n.id);
+      if (!ex) { notes.push(sanNote(n)); nn++; }
+      else if ((Number(n.updatedAt) || 0) > (ex.updatedAt || 0)) { Object.assign(ex, sanNote(n)); nn++; }   // 筆記可編輯，最後編輯優先
+    }
+  }
   if (data.scenePhrases && typeof data.scenePhrases === 'object' && !Array.isArray(data.scenePhrases)) {
     for (const k of Object.keys(data.scenePhrases)) {
       if (!Array.isArray(data.scenePhrases[k])) continue;
@@ -1799,17 +1835,21 @@ function mergeData(data, fromSync) {
     before = grammarNotes.length;
     grammarNotes = grammarNotes.filter(x => !deletions.grammar[x.id]);
     nd += before - grammarNotes.length;
+    before = notes.length;
+    notes = notes.filter(x => !deletions.note[x.id]);
+    nd += before - notes.length;
     for (const k of Object.keys(scenePhrases)) {
       before = scenePhrases[k].length;
       scenePhrases[k] = scenePhrases[k].filter(x => !deletions.scene[x.id]);
       nd += before - scenePhrases[k].length;
     }
   }
-  return { nf, nh, ng, ns, nd, total: nf + nh + ng + ns + nd };
+  return { nf, nh, ng, ns, nn, nd, total: nf + nh + ng + ns + nn + nd };
 }
 function backupJSON() {
   return JSON.stringify({ app: 'nihongo-tool', version: VERSION, exportedAt: new Date().toISOString(),
     favorites: favorites, history: history, grammar: grammarNotes, scenePhrases: scenePhrases,
+    notes: notes,
     deletions: deletions,
     settings: Object.assign({}, settings, { apiKey: '', syncKey: '' }) });   // 兩把 key 絕不進備份檔
 }
@@ -1846,7 +1886,7 @@ function importBackup(ev) {
         applyTheme();
       }
       flushAll(); renderAll();
-      showToast('匯入完成：最愛 +' + m.nf + '、歷史 +' + m.nh + '、文法 +' + m.ng + '、情境句 +' + m.ns);
+      showToast('匯入完成：最愛 +' + m.nf + '、歷史 +' + m.nh + '、文法 +' + m.ng + '、情境句 +' + m.ns + '、筆記 +' + m.nn);
     } catch (e) { showToast('匯入失敗：不是有效的備份 JSON'); }
   };
   reader.readAsText(file);
@@ -1911,6 +1951,104 @@ document.getElementById('tabbar').addEventListener('click', ev => {
   composer.classList.toggle('hidden', b.dataset.tab !== 'chat');
   stopSpeak();
   if (b.dataset.tab === 'chat') chatList.scrollTop = chatList.scrollHeight;
+});
+
+/* ---------------- 筆記分頁（v1.6.0）：手寫學習筆記，命名＋標籤＋手動排序＋最愛 ---------------- */
+const noteArea = document.getElementById('noteArea');
+let noteTagFilter = '';
+let noteStarOnly = false;
+const openNoteIds = {};   // 內文展開狀態（不同步、不存檔）
+function sortedNotes() { return [...notes].sort((a, b) => (a.order - b.order) || (b.ts - a.ts)); }
+function noteCardHTML(n, idx, count, filtered) {
+  const tags = (n.tags || []).map(t => '<span class="tagchip">' + esc(t) + '</span>').join('');
+  const star = n.starred ? '★' : '☆';
+  return '<div class="pcard" data-id="' + esc(n.id) + '">' +
+    '<div class="note-head"><span class="note-name">' + (esc(n.name) || '（未命名）') + '</span>' +
+    '<button class="iconbtn' + (n.starred ? ' star-on' : '') + '" data-act="star">' + star + '</button></div>' +
+    (tags ? '<div style="margin-top:2px;">' + tags + '</div>' : '') +
+    (n.content ? '<div class="note-content' + (openNoteIds[n.id] ? ' open' : '') + '" data-act="toggle">' + esc(n.content) + '</div>' : '') +
+    '<div class="actions">' +
+    (filtered ? '' :
+      '<button class="iconbtn" data-act="up"' + (idx === 0 ? ' disabled' : '') + '>↑</button>' +
+      '<button class="iconbtn" data-act="down"' + (idx === count - 1 ? ' disabled' : '') + '>↓</button>') +
+    '<button class="iconbtn" data-act="edit">' + I_EDIT + '</button>' +
+    '<button class="iconbtn" data-act="del">' + I_DEL + '</button>' +
+    '</div>' +
+    '<div class="meta-line">' + fmtDate(n.updatedAt || n.ts) + '</div>' +
+    '</div>';
+}
+function renderNotes() {
+  const allTags = [...new Set(notes.flatMap(n => n.tags || []))];
+  const chips = (notes.length
+    ? '<div class="tagfilter">' +
+      '<button class="pill' + (!noteTagFilter && !noteStarOnly ? ' on' : '') + '" data-ntag="" data-nstar="0">全部</button>' +
+      '<button class="pill' + (noteStarOnly ? ' on' : '') + '" data-nstar="1">★ 最愛</button>' +
+      allTags.map(t => '<button class="pill' + (noteTagFilter === t ? ' on' : '') + '" data-ntag="' + esc(t) + '">' + esc(t) + '</button>').join('') +
+      '</div>'
+    : '');
+  const filtered = !!(noteTagFilter || noteStarOnly);   // 篩選中不給排序，避免跨項亂跳
+  const list = sortedNotes()
+    .filter(n => !noteTagFilter || (n.tags || []).includes(noteTagFilter))
+    .filter(n => !noteStarOnly || n.starred);
+  noteArea.innerHTML = chips +
+    (list.length
+      ? list.map((n, i) => noteCardHTML(n, i, list.length, filtered)).join('')
+      : '<div class="empty">' + (notes.length ? '沒有符合篩選的筆記。' : '還沒有筆記。<br>按右上「＋ 新增筆記」開始。') + '</div>');
+  noteArea.querySelectorAll('.tagfilter .pill').forEach(b =>
+    b.onclick = () => {
+      if (b.dataset.nstar === '1') { noteStarOnly = !noteStarOnly; }
+      else { noteTagFilter = b.dataset.ntag; noteStarOnly = false; }
+      renderNotes();
+    });
+}
+async function noteEditUI(title, n) {
+  const out = await editUI(title, [
+    { key: 'name', label: '標題', value: n.name },
+    { key: 'content', label: '內文', value: n.content, multiline: true },
+    { key: 'tags', label: '標籤（逗號分隔，如：動詞,N4）', value: (n.tags || []).join(',') }
+  ]);
+  if (!out) return null;
+  return { name: out.name.trim(), content: out.content.trim(),
+    tags: out.tags.split(/[,，]/).map(s => s.trim()).filter(Boolean) };
+}
+document.getElementById('noteAddBtn').addEventListener('click', async () => {
+  const out = await noteEditUI('新增筆記', { name: '', content: '', tags: [] });
+  if (!out || (!out.name && !out.content)) return;
+  const minOrder = notes.length ? Math.min(...notes.map(x => x.order)) : 1;
+  notes.push(Object.assign({ id: uuid(), starred: false, order: minOrder - 1,   // 新筆記排最上面
+    ts: Date.now(), updatedAt: Date.now() }, out));
+  saveNotes(); renderNotes(); showToast('已新增筆記');
+});
+noteArea.addEventListener('click', async ev => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  const id = btn.closest('.pcard').dataset.id;
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  const act = btn.dataset.act;
+  if (act === 'toggle') { openNoteIds[id] = !openNoteIds[id]; renderNotes(); return; }
+  if (act === 'star') { n.starred = !n.starred; n.updatedAt = Date.now(); saveNotes(); renderNotes(); return; }
+  if (act === 'up' || act === 'down') {
+    const list = sortedNotes();
+    const i = list.findIndex(x => x.id === id);
+    const j = act === 'up' ? i - 1 : i + 1;
+    if (j < 0 || j >= list.length) return;
+    const t = list[i].order; list[i].order = list[j].order; list[j].order = t;
+    list[i].updatedAt = list[j].updatedAt = Date.now();   // 兩筆都記時間，順序才會同步到他端
+    saveNotes(); renderNotes(); return;
+  }
+  if (act === 'edit') {
+    const out = await noteEditUI('編輯筆記', n);
+    if (!out) return;
+    Object.assign(n, out); n.updatedAt = Date.now();
+    saveNotes(); renderNotes(); return;
+  }
+  if (act === 'del') {
+    if (!(await confirmUI('刪除「' + (n.name || '未命名') + '」這則筆記？', '刪除', true))) return;
+    notes = notes.filter(x => x.id !== id);
+    markDeleted('note', id);
+    saveNotes(); renderNotes();
+  }
 });
 
 /* ================================================================
@@ -2502,7 +2640,7 @@ if (window.visualViewport) {
 
 /* ---------------- 初始化 ---------------- */
 function renderAll() {
-  renderChat(); renderPhrases(); renderScenes(); renderHistory(); renderSettings();
+  renderChat(); renderPhrases(); renderScenes(); renderHistory(); renderNotes(); renderSettings();
 }
 applyTheme();
 renderDirBtn();

@@ -59,7 +59,9 @@ app.put('/api/sync', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: 'write failed' }); }
 });
 
-app.use(express.static(__dirname));
+// 只公開前端兩個檔（原本 express.static(__dirname) 會連 server.js、CLAUDE.md 一起外露）
+app.get(['/', '/index.html'], (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/sw.js', (req, res) => res.sendFile(path.join(__dirname, 'sw.js')));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('nihongo-tool listening on ' + PORT));

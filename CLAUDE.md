@@ -2,12 +2,19 @@
 
 個人日語溝通工具（index.html＋sw.js＋server.js 小後端），規格正本：`../日語學習工具規劃書.md`。
 
-- 正式網址：https://nihongo.casper77chen.com（GoDaddy CNAME `nihongo` → nihongo-casper.zeabur.app）
-- 備用網址：https://nihongo-casper.zeabur.app
+- 正式網址：https://nihongo.casper77chen.com（2026-10-27 起 Railway；CF CNAME，DNS only）
+- Railway 臨時網址：https://nihongo-tool-production.up.railway.app（舊 Zeabur 備用網址 nihongo-casper.zeabur.app 留到搬家第 6 階段）
 - 已作為案例卡放進兩版 AI 課程的 Lesson 2（互動工具實例）與 Lesson 3（localStorage 對比案例）
 - 已收錄 Casper Dashboard（2026-07-21，id `nihongo-tool`、Casper77 分類、無 pending API、含 Restart 對照）
 
-## Zeabur Deployment
+## 部署（2026-10-27 起 Railway）
+- Railway 專案 nihongo-tool（22922738-2475-49a4-819e-76958d65c1c6）、服務 86ac99de-3127-4f86-9c8b-e8c07be384d6、環境 adc3c387-07c1-41db-af69-706205abaddc，新加坡
+- GitHub casper77chen/nihongo-tool push main 自動部署（不再用 direct deploy）
+- Volume 掛 `/data`（sync.json＋sync-<hash>.json）；變數 SYNC_KEY、SYNC_KEYS（加朋友＝改 Railway 變數，會自動重部署）
+- 改容器內檔案：`railway ssh -p <專案> -e <環境> -s <服務> -- <指令>`
+- 靜態檔只公開 index.html、sw.js（server.js 白名單），新增前端檔要加路由
+
+## （舊）Zeabur Deployment
 - Project ID: 6a59715c725eab1a1db81ce6（nihongo-tool，Side_Project_A 伺服器）
 - Service ID: 6a597182d549337cfa26afc2
 - 部署方式：direct deploy（`npx zeabur@latest deploy --project-id <PID> --service-id <SID> -i=false`，在本目錄執行）
